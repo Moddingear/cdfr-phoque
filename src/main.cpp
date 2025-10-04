@@ -1,7 +1,6 @@
-/**
- * B-G431B-ESC1 position motion control example with encoder
- *
- */
+#if PHOQUE
+#include <variant_PHOQUE.h>
+#endif
 #include <Arduino.h>
 #include <algorithm>
 #include <math.hpp>
@@ -10,13 +9,16 @@
 
 #if SIMPLECANLIB
 #include <SimpleCAN.h>
-#else
+#elif HAL_CAN
 #include <can.hpp>
 #endif
 #include <CANRobot.hpp>
 #include <map>
+#include <USBSerial.h>
 
-
+#if PHOQUE
+HardwareSerial Serial1(A_USART_RX, A_USART_TX);
+#endif
 
 int potentiometer_value = 0;
 int last_message_timestamp = 0;
@@ -79,6 +81,7 @@ void SendHello()
 	#endif
 }
 
+#if SIMPLECANLIB
 void OnReceive(const SimpleCanRxHeader rxHeader, const uint8_t *rxData, void* userData)
 {
 	if (rxHeader.DataLength < 1)
@@ -222,12 +225,15 @@ bool FilterFunc(int CanID)
 {
 	return CanID == can_identifier;
 }
+#endif
 
 void setup()
 {
 	// use monitoring with serial
 	Serial.begin(BAUD_RATE);
+	#if !PHOQUE
 	pinMode(A_BUTTON, INPUT);
+	#endif
 	pinMode(LED_BUILTIN, OUTPUT);
 
 	while (HSE_VALUE != 8000000UL)
@@ -260,12 +266,10 @@ void setup()
 	Serial.printf("Potentiometer value is %d, end of the line is %d, we are ID %d\n", potentiometer_value, end_of_line, can_identifier);
 
 	//FOC::setup();
-
+	#if !PHOQUE
 	pinMode(A_CAN_TERM, OUTPUT);
-	pinMode(A_HALL1, OUTPUT);
-	pinMode(A_HALL2, OUTPUT);
-	pinMode(A_HALL3, OUTPUT);
 	digitalWrite(A_CAN_TERM, end_of_line);
+	#endif
 
 	#if SIMPLECANLIB
 	CanInstance = CreateCanLib(A_CAN_TX, A_CAN_RX);
@@ -286,10 +290,6 @@ void setup()
 	SendHello();
 
 	Serial.println("Driver ready.");
-
-	#if STANDALONE
-	FOC::setup();
-	#endif
 }
 
 void loop() 
@@ -297,16 +297,23 @@ void loop()
 	static uint64_t last_feedback = millis();
 	bool led_status = (millis()%1000) > 500;
 	digitalWrite(LED_BUILTIN, led_status);
-	digitalWrite(A_HALL1, led_status);
-	digitalWrite(A_HALL2, led_status);
-	digitalWrite(A_HALL3, led_status);
+	
+	#if !PHOQUE
 	if (!digitalRead(A_BUTTON))
 	{
 		Serial.printf("Resetting...\n");
 		NVIC_SystemReset();
 	}
+	#endif
 	#if SIMPLECANLIB
 	CanInstance->Loop();
+	#endif
+	#if STANDALONE
+	if (!FOC::IsSetup() && FOC::get_vbus() > 10)
+	{
+		Serial.printf("Voltage sufficient (%f), starting FOC.\n", FOC::get_vbus());
+		FOC::setup();
+	}
 	#endif
 	FOC::loop();
 	if (FOC::IsSetup() && last_feedback + 100 < millis())

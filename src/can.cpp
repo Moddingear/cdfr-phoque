@@ -4,7 +4,7 @@
 #include <stm32g4xx_hal.h>
 #include <hal.hpp>
 
-#if !SIMPLECANLIB
+#if HAL_CAN
 FDCAN_HandleTypeDef hfdcan1 = {};
 
 

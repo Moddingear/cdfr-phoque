@@ -7,6 +7,7 @@ namespace FOC
 {
 	void setup();
 	bool IsSetup();
+	void RealTimeLoop();
 	void loop();
 	void start();
 	void stop();
@@ -15,6 +16,7 @@ namespace FOC
 	float get_angle();
 	float get_temperature();
 	float get_current();
+	float get_vbus();
 
 	void tune_settings(const RobotCAN::PIDTunePacket *message);
 };
