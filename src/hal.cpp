@@ -135,14 +135,17 @@ extern "C" void SystemClock_Config(void)
 
 #if 1
 	RCC_PeriphCLKInitTypeDef PeriphClkInit;
-	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2 | RCC_PERIPHCLK_FDCAN; 
+	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2 | RCC_PERIPHCLK_FDCAN | RCC_PERIPHCLK_USB | RCC_PERIPHCLK_RNG; 
 	PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1; //UART2 at 170MHz
 	PeriphClkInit.FdcanClockSelection = RCC_FDCANCLKSOURCE_PLL; //CAN will run at 170MHz
 	PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_SYSCLK; //I2C1 at 170MHz
+	PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_HSI48;
+	PeriphClkInit.RngClockSelection = RCC_RNGCLKSOURCE_HSI48;
 	if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
 	{
 		Error_Handler();
 	}
+	__HAL_RCC_RNG_CLK_ENABLE();
 #endif
 	//auto load_val = HAL_RCC_GetSysClockFreq()/1000-1;
 	//SysTick->LOAD = load_val;

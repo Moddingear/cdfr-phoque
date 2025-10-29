@@ -1,6 +1,3 @@
-#if PHOQUE
-#include <variant_PHOQUE.h>
-#endif
 #include <foc.hpp>
 #include <Arduino.h>
 #include <BLDCMotor.h>
@@ -11,6 +8,8 @@
 #include <encoders/sc60228/MagneticSensorSC60228.h>
 #else
 #include <encoders/as5600/MagneticSensorAS5600.h>
+#include <drivers/BLDCDriver6PWM.h>
+#include <current_sense/LowsideCurrentSense.h>
 #endif
 #include <current_sense/hardware_specific/stm32/stm32_mcu.h>
 
@@ -38,7 +37,7 @@
 #define MAX_VOLTAGE 20
 #endif
 
-#define RTL 1
+#define RTL 0
 
 //Phase inductance : dt/ln(V0/V1)*R
 
@@ -149,11 +148,8 @@ float FOC::get_vbus()
 void update_vbus()
 {
 	auto &vbus = driver.voltage_power_supply;
-	#if PHOQUE
-	vbus = 12;
-	#else
+
 	vbus = FOC::get_vbus();
-	#endif
 	motor.voltage_limit = min(get_max_voltage(FOC::get_temperature()), vbus/2);
 	motor.PID_current_q.limit = motor.voltage_limit;
 	motor.PID_current_d.limit = motor.voltage_limit;
@@ -213,11 +209,22 @@ void param_find_pole_pairs()
 void init_sensors()
 {
 	driver.init();
+	#if PHOQUE && 0
+	//change gate drive voltage
+	driver.unlock();
+	auto powmng = driver.getPowMngRegister();
+	powmng.vcc_val = 0b10;
+	driver.setPowMngRegister(powmng);
+	driver.lock();
+	#endif
+	#if PHOQUE && 0
+	//change fault register to not care about vds protection
 	driver.unlock();
 	STSPIN32G4NFault faultreg;
 	faultreg.reg = 3;
 	driver.setNFaultRegister(faultreg);
 	driver.lock();
+	#endif
 	//digitalWrite(PE7, HIGH);
 	//driver.clearFaults();
 	#if PHOQUE
@@ -412,6 +419,7 @@ void FOC::RealTimeLoop()
 	motor.loopFOC();
 	motor.move();
 
+	#if 0
 	static float last_shaft_angle = motor.shaftAngle();
 	static uint32_t last_time_stamp = micros();
 	static float last_speed = 0; //rad/s
@@ -430,6 +438,7 @@ void FOC::RealTimeLoop()
 	last_speed = (this_shaft_angle-last_shaft_angle)/dt;
 	last_shaft_angle = this_shaft_angle;
 	last_time_stamp = this_timestamp;
+	#endif
 }
 
 void FOC::loop()
@@ -459,14 +468,31 @@ void FOC::loop()
 		Serial.printf("Voltage too low, disabling\n");
 	}
 
+	#if RTL
 	if (rtl_dt > 2.f/driver.pwm_frequency)
 	{
 		Serial.printf("RTL took too long! %f\n", rtl_dt);
 		rtl_dt = 0;
 	}
-	
+	#endif
 
 	#if PHOQUE
+	static bool last_enabled = true;
+	if (!motor.enabled && motor.enabled != last_enabled)
+	{
+		Serial.printf("Enabling low sides\n");
+		driver.setPhaseState(PHASE_ON, PHASE_ON, PHASE_ON);
+		driver.setPwm(0,0,0);
+		driver.clearFaults();
+	}
+	last_enabled = motor.enabled;
+	
+
+	#endif
+	
+	
+
+	#if PHOQUE && 0
 	static auto lastPrint = millis();
 	if (millis() - lastPrint > 1000)
 	{
@@ -521,8 +547,8 @@ void FOC::loop()
 	#if !RTL
 	RealTimeLoop();
 
-	#if 0
-	if (i == 10000)
+	#if 1
+	if (millis() - i0 > 10000)
 	{
 		auto time_now = millis();
 		float loop_frequency = (float)i/(time_now-i0)*1000;

@@ -1,6 +1,3 @@
-#if PHOQUE
-#include <variant_PHOQUE.h>
-#endif
 #include <Arduino.h>
 #include <algorithm>
 #include <math.hpp>
@@ -15,8 +12,9 @@
 #include <CANRobot.hpp>
 #include <map>
 #include <USBSerial.h>
+#include <stm32g4xx_hal_rng.h>
 
-#if PHOQUE
+#if PHOQUE && 0
 HardwareSerial Serial1(A_USART_RX, A_USART_TX);
 #endif
 
@@ -297,6 +295,7 @@ void loop()
 	static uint64_t last_feedback = millis();
 	bool led_status = (millis()%1000) > 500;
 	digitalWrite(LED_BUILTIN, led_status);
+
 	
 	#if !PHOQUE
 	if (!digitalRead(A_BUTTON))
