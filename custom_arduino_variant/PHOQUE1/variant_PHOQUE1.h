@@ -186,35 +186,35 @@
 #define NTC_B_CONSTANT			3455	//B = ln(R/R0)/(1/T-1/T0)
 #define NTC_T0					(273+25)//Kelvin
 
-#define A_CAN_RX				PB8
-#define A_CAN_TX				PB9
-#define A_CAN_SHDN				PB7
+#define CAN_RX					PB8
+#define CAN_TX					PB9
+#define CAN_SHDN				PB7
 
-#define A_SWDIO					PA13
-#define A_SWCLK					PA14
+#define SWDIO					PA13
+#define SWCLK					PA14
 
-#define A_I2C2SCL_TX1			PA9
-#define A_I2C2SDA				PA8
-#define A_RX1					PA10
+#define I2C2SCL_TX1				PA9
+#define I2C2SDA					PA8
+#define RX1						PA10
 
-#define A_PWM					A_I2C2SDA		//Legacy PWM input for compat with BG431B-ESC1
-#define A_USART_TX				A_I2C2SCL_TX1
-#define A_USART_RX				A_RX1
+#define PWM						I2C2SDA		//Legacy PWM input for compat with BG431B-ESC1
+#define USART_TX				I2C2SCL_TX1
+#define USART_RX				RX1
 
-#define A_SPARE1				PC2
-#define A_SPARE2				PA0
-#define A_SPARE3				PC3
+#define SPARE1					PC2
+#define SPARE2					PA0
+#define SPARE3					PC3
 
-#define A_HALL1					A_SPARE1
-#define A_HALL2					A_SPARE2
-#define A_HALL3					A_SPARE3
+#define HALL1					SPARE1
+#define HALL2					SPARE2
+#define HALL3					SPARE3
 
-#define A_ENCODER_A				A_SPARE1
-#define A_ENCODER_B				A_SPARE3
-#define A_ENCODER_Z				A_SPARE2
+#define ENCODER_A				SPARE1
+#define ENCODER_B				SPARE3
+#define ENCODER_Z				SPARE2
 
-#define A_USBCPD_CC1			PB4
-#define A_USBCPD_CC2			PB6
+#define USBCPD_CC1				PB4
+#define USBCPD_CC2				PB6
 
 // On-board LED pin number
 #define LED_RED					PC13
@@ -250,10 +250,10 @@
 
 // I2C definitions
 #ifndef PIN_WIRE_SDA
-	#define PIN_WIRE_SDA			A_I2C2SDA
+	#define PIN_WIRE_SDA			I2C2SDA
 #endif
 #ifndef PIN_WIRE_SCL
-	#define PIN_WIRE_SCL			A_I2C2SCL_TX1
+	#define PIN_WIRE_SCL			I2C2SCL_TX1
 #endif
 
 // Timer Definitions
@@ -271,10 +271,10 @@
 // Default pin used for 'Serial' instance (ex: ST-Link)
 // Mandatory for Firmata
 #ifndef PIN_SERIAL_RX
-	#define PIN_SERIAL_RX			A_USART_RX
+	#define PIN_SERIAL_RX			USART_RX
 #endif
 #ifndef PIN_SERIAL_TX
-	#define PIN_SERIAL_TX			A_USART_TX
+	#define PIN_SERIAL_TX			USART_TX
 #endif
 
 /* HAL configuration */

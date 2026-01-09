@@ -14,12 +14,13 @@
 #include <USBSerial.h>
 #include <stm32g4xx_hal_rng.h>
 
-#if PHOQUE && 0
+#if 0
 HardwareSerial Serial1(A_USART_RX, A_USART_TX);
 #endif
 
 int potentiometer_value = 0;
 int last_message_timestamp = 0;
+int vbus_ok = 0;
 
 std::map<int16_t, uint64_t> discriminators;
 
@@ -229,16 +230,25 @@ void setup()
 {
 	// use monitoring with serial
 	Serial.begin(BAUD_RATE);
-	#if !PHOQUE
+	
+	#ifdef ARDUINO_B_G431B_ESC1
 	pinMode(A_BUTTON, INPUT);
 	#endif
 	pinMode(LED_BUILTIN, OUTPUT);
+	pinMode(A_VBUS, INPUT_ANALOG);
 
+	for (size_t i = 0; i < 100; i++)
+	{
+		delay(100);
+		digitalWrite(LED_BUILTIN, i & 1);
+	}
+	#ifdef ARDUINO_B_G431B_ESC1
 	while (HSE_VALUE != 8000000UL)
 	{
 		//go set HSE_VALUE to 8000000UL in .platformio/packages/framework-arduinoststm32/variants/STM32G4xx/G431C(6-8-B)U_G441CBU/variant_B_G431B_ESC1.h
 		Serial.println("Wrong HSE value!");
 	}
+	#endif
 
 	analogReadResolution(12);
 	potentiometer_value = analogRead(A_POTENTIOMETER);
@@ -264,7 +274,7 @@ void setup()
 	Serial.printf("Potentiometer value is %d, end of the line is %d, we are ID %d\n", potentiometer_value, end_of_line, can_identifier);
 
 	//FOC::setup();
-	#if !PHOQUE
+	#ifdef ARDUINO_B_G431B_ESC1
 	pinMode(A_CAN_TERM, OUTPUT);
 	digitalWrite(A_CAN_TERM, end_of_line);
 	#endif
@@ -297,7 +307,7 @@ void loop()
 	digitalWrite(LED_BUILTIN, led_status);
 
 	
-	#if !PHOQUE
+	#ifdef ARDUINO_B_G431B_ESC1
 	if (!digitalRead(A_BUTTON))
 	{
 		Serial.printf("Resetting...\n");
@@ -308,10 +318,22 @@ void loop()
 	CanInstance->Loop();
 	#endif
 	#if STANDALONE
-	if (!FOC::IsSetup() && FOC::get_vbus() > 10)
+	if (!FOC::IsSetup())
 	{
-		Serial.printf("Voltage sufficient (%f), starting FOC.\n", FOC::get_vbus());
-		FOC::setup();
+		if (FOC::get_vbus() > 10)
+		{
+			vbus_ok++;
+		}
+		else
+		{
+			vbus_ok = 0;
+		}
+		
+		if (vbus_ok > 10)
+		{
+			Serial.printf("Voltage sufficient (%f), temp at %f, starting FOC.\n", FOC::get_vbus(), FOC::get_temperature());
+			FOC::setup();
+		}
 	}
 	#endif
 	FOC::loop();

@@ -3,14 +3,19 @@
 #include <BLDCMotor.h>
 #include <communication/Commander.h>
 #include <utilities/stm32math/STM32G4CORDICTrigFunctions.h>
-#if PHOQUE
+#ifdef ARDUINO_PHOQUE1
 #include <drivers/stspin32g4/STSPIN32G4.h>
 #include <encoders/sc60228/MagneticSensorSC60228.h>
-#else
-#include <encoders/as5600/MagneticSensorAS5600.h>
-#include <drivers/BLDCDriver6PWM.h>
-#include <current_sense/LowsideCurrentSense.h>
 #endif
+#ifdef ARDUINO_B_G431B_ESC1
+#include <drivers/BLDCDriver6PWM.h>
+#include <encoders/as5600/MagneticSensorAS5600.h>
+#endif
+#ifdef ARDUINO_PHOQUE2
+#include <drivers/drv832x/drv832x.h>
+#include <encoders/sc60228/MagneticSensorSC60228.h>
+#endif
+#include <current_sense/LowsideCurrentSense.h>
 #include <current_sense/hardware_specific/stm32/stm32_mcu.h>
 
 #include <math.hpp>
@@ -43,16 +48,18 @@
 
 // Motor instance
 BLDCMotor motor(FIND_PP ? 1 : POLE_PAIRS, PHASE_RESISTANCE, KV, PHASE_INDUCTANCE);
-#if PHOQUE
-#if 1
+#ifdef ARDUINO_PHOQUE1
 STSPIN32G4 driver;
-#else 
-BLDCDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL);
+LowsideCurrentSense current_sensor(-(1.714*4.f), -1, -2, -3);
 #endif
-#else
+#ifdef ARDUINO_B_G431B_ESC1
 BLDCDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL);
 // Gain calculation shown at https://community.simplefoc.com/t/b-g431b-esc1-current-control/521/21
 LowsideCurrentSense current_sensor(-(1.714*4.f), A_OP1_OUT, A_OP2_OUT, A_OP3_OUT);
+#endif
+#ifdef ARDUINO_PHOQUE2
+DRV832xDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL, PIN_SS_DRIVER);
+LowsideCurrentSense current_sensor(3e-3, 20, A_CURRU, A_CURRV, A_CURRW);
 #endif
 
 #if HALL_SENSOR
@@ -61,15 +68,12 @@ void doA(){position_sensor.handleA();}
 void doB(){position_sensor.handleB();}
 void doC(){position_sensor.handleC();}
 #else
-#if PHOQUE
+#if defined(ARDUINO_PHOQUE1) || defined(ARDUINO_PHOQUE2)
 SPIClass magspi(PIN_SPI_MOSI, PIN_SPI_MISO, PIN_SPI_SCK);
 MagneticSensorSC60228 position_sensor(PIN_SS_MAG_ANGLE);
-#else
-#if 1
-MagneticSensorAS5600 position_sensor;
-#else
-MagneticSensorI2C position_sensor(AS5600_I2C);
 #endif
+#ifdef ARDUINO_B_G431B_ESC1
+MagneticSensorAS5600 position_sensor;
 #endif
 #endif
 
@@ -88,6 +92,7 @@ bool foc_setup = false;
 constexpr float Ntc2TempV(float ADCVoltage)
 {
 	// Formula: https://www.giangrandi.org/electronics/ntc/ntc.shtml
+	#ifdef ARDUINO_B_G431B_ESC1
 	const float ResistorBalance = 4700.0;
 	const float Beta  = 3425.0F;
 	const float RoomTempI = 1.0F/298.15F; //[K]
@@ -98,15 +103,31 @@ constexpr float Ntc2TempV(float ADCVoltage)
 	T = T - 273.15;
 
 	return T;
+	#endif
+	#if defined(ARDUINO_PHOQUE1) || defined(ARDUINO_PHOQUE2)
+	//B = ln(R/R0)/(1/T-1/T0)
+	//V = R/(R+R0)*3.3
+	//thus
+	float alpha = ADCVoltage/(3.3f-ADCVoltage); // R/R0
+	float T = 1.f/(logf(alpha)/NTC_B_CONSTANT + 1.f/NTC_T0);
+	return T-273.15f;
+	#endif
 }
 
 float FOC::get_temperature()
-{	
-	#if PHOQUE
-	return 0;
-	#else
-	return Ntc2TempV(_readADCVoltageLowSide(A_TEMPERATURE, current_sensor.params));
-	#endif
+{
+	float temp_raw;
+	if (current_sensor.initialized)
+	{
+		temp_raw = _readADCVoltageLowSide(A_TEMPERATURE, current_sensor.params);
+	}
+	else
+	{
+		temp_raw = analogRead(A_TEMPERATURE) * (3.3f) / ((1<<12)-1);
+	}
+	
+	
+	return Ntc2TempV(temp_raw);
 }
 
 constexpr float max_temp = 80, tt_start = 60; //degC
@@ -128,19 +149,19 @@ constexpr float get_max_voltage(float temp)
 float FOC::get_vbus()
 {
 	float vbus_raw;
-	#if !PHOQUE
-	if (IsSetup())
+	if (current_sensor.initialized)
 	{
 		vbus_raw = _readADCVoltageLowSide(A_VBUS, current_sensor.params);
 	}
 	else
-	#endif
 	{
-		vbus_raw = analogRead(A_VBUS) * (3.3f) / (1<<12);
+		auto read = analogRead(A_VBUS);
+		vbus_raw = read * (3.3f) / ((1<<12)-1);
 	}
-	#if PHOQUE
-	return vbus_raw * (220+10)/10.f;
-	#else
+	#if defined(ARDUINO_PHOQUE1) || defined(ARDUINO_PHOQUE2)
+	return vbus_raw * VBUS_MUL_FACTOR;
+	#endif
+	#if defined(ARDUINO_B_G431B_ESC1)
 	return vbus_raw * (169+18)/18.f;
 	#endif
 }
@@ -187,10 +208,10 @@ void param_foc()
 	motor.motion_downsample = 0;
 	motor.monitor_downsample = 1000;
 	motor.monitor_decimals = 4;
-	#if !PHOQUE
-	current_sensor.skip_align = true;
+	#if defined(ARDUINO_B_G431B_ESC1)
 	position_sensor.closeTransactions = false;
 	#endif
+	current_sensor.skip_align = true;
 
 	motor.PID_current_q.limit = driver.voltage_power_supply;
 	motor.PID_current_d.limit = driver.voltage_power_supply;
@@ -208,8 +229,9 @@ void param_find_pole_pairs()
 
 void init_sensors()
 {
+	Serial.printf("Starting driver init\n");
 	driver.init();
-	#if PHOQUE && 0
+	#if defined(ARDUINO_PHOQUE1) && 0
 	//change gate drive voltage
 	driver.unlock();
 	auto powmng = driver.getPowMngRegister();
@@ -217,7 +239,7 @@ void init_sensors()
 	driver.setPowMngRegister(powmng);
 	driver.lock();
 	#endif
-	#if PHOQUE && 0
+	#if defined(ARDUINO_PHOQUE1) && 0
 	//change fault register to not care about vds protection
 	driver.unlock();
 	STSPIN32G4NFault faultreg;
@@ -227,7 +249,8 @@ void init_sensors()
 	#endif
 	//digitalWrite(PE7, HIGH);
 	//driver.clearFaults();
-	#if PHOQUE
+	#if defined(ARDUINO_PHOQUE1)
+	Serial.printf("Starting position sensor init\n");
 	position_sensor.init(&magspi);
 	#else
 	position_sensor.init();
@@ -235,9 +258,7 @@ void init_sensors()
 	#if HALL_SENSOR
 	position_sensor.enableInterrupts(doA, doB, doC); //only for hall
 	#else
-	#if PHOQUE
-	
-	#else
+	#ifdef ARDUINO_B_G431B_ESC1
 	Wire.setClock(400000UL);
 	#endif
 	#endif
@@ -247,14 +268,14 @@ void init_sensors()
 	//link driver
 	motor.linkDriver(&driver);
 	// link current sense and the driver
-	#if !PHOQUE
 	current_sensor.linkDriver(&driver);
+	Serial.printf("Starting current sensor init\n");
 	current_sensor.init();
 	motor.linkCurrentSense(&current_sensor);
-	#endif
 
 	update_vbus();
 
+	Serial.printf("Updated VBUS to %f, temp is %f\n", driver.voltage_power_supply, FOC::get_temperature());
 }
 
 int find_pole_pairs()
@@ -368,9 +389,7 @@ void FOC::setup()
 	#if HALL_SENSOR
 	Serial.printf("Hall sensor type %d\n", position_sensor.hall_type);
 	#else
-	#if PHOQUE
-	
-	#else
+	#ifdef ARDUINO_B_G431B_ESC1
 	auto status = position_sensor.readStatus();
 	Serial.printf("Magnetic sensor detected %d, too weak %d, too strong %d, magnitude %d\n", status.md, status.ml, status.mh, position_sensor.readMagnitude());
 	#endif
@@ -390,7 +409,7 @@ void FOC::setup()
 	//commander.verbose = VerboseMode::machine_readable;
 	#endif
 
-	#if PHOQUE
+	#ifdef ARDUINO_PHOQUE1
 	attachInterrupt(PIN_NFAULT, OnFault, RISING);
 	#endif
 
@@ -476,7 +495,7 @@ void FOC::loop()
 	}
 	#endif
 
-	#if PHOQUE
+	#ifdef ARDUINO_PHOQUE1
 	static bool last_enabled = true;
 	if (!motor.enabled && motor.enabled != last_enabled)
 	{
@@ -486,15 +505,13 @@ void FOC::loop()
 		driver.clearFaults();
 	}
 	last_enabled = motor.enabled;
-	
-
 	#endif
 	
 	
 
-	#if PHOQUE && 0
+	#if defined(ARDUINO_PHOQUE1)
 	static auto lastPrint = millis();
-	if (millis() - lastPrint > 1000)
+	if (millis() - lastPrint > 1000 && !motor.enabled)
 	{
 		lastPrint = millis();
 		auto fault = driver.getNFaultRegister();
@@ -502,6 +519,65 @@ void FOC::loop()
 		auto power = driver.getPowMngRegister();
 		auto status = driver.status();
 		Serial.printf("Reporting, fault register is %#x, ready is %#x, power is %#x, status is %#x\n", fault, ready, power, status);
+		//driver.clearFaults();
+	}
+	#endif
+
+	#if defined(ARDUINO_PHOQUE2)
+	static auto lastPrint = millis();
+	if (millis() - lastPrint > 1000)
+	{
+		lastPrint = millis();
+		auto status = driver.getStatus();
+		if (status.isFault())
+		{
+			Serial.printf("Fault detected!\n");
+		}
+		if (status.isOverCurrent())
+		{
+			Serial.printf("Overcurrent reported! Ah%x Al%x Bh%x Bl%x Ch%x Cl%x\n",
+				status.isOverCurrent_Ah(),
+				status.isOverCurrent_Al(),
+				status.isOverCurrent_Bh(),
+				status.isOverCurrent_Bl(),
+				status.isOverCurrent_Ch(),
+				status.isOverCurrent_Cl());
+		}
+		if (status.isGateDriveFault())
+		{
+			Serial.printf("Gate drive fault reported! Ah%x Al%x Bh%x Bl%x Ch%x Cl%x\n", 
+				status.isGateDriveFault_Ah(),
+				status.isGateDriveFault_Al(),
+				status.isGateDriveFault_Bh(),
+				status.isGateDriveFault_Bl(),
+				status.isGateDriveFault_Ch(),
+				status.isGateDriveFault_Cl());
+		}
+		if (status.isUndervoltageLockout())
+		{
+			Serial.printf("UVLO detected!\n");
+		}
+		if (status.isOverTemperature())
+		{
+			Serial.printf("Overtemperature detected!\n");
+		}
+		if (status.isOverTemperatureWarning())
+		{
+			Serial.printf("Overtemperature warning!\n");
+		}
+		if (status.isChargePumpUndervoltage())
+		{
+			Serial.printf("Charge pump undervoltage detected!\n");
+		}
+		
+		#if 0
+		Serial.printf("Brake %d, Coast %d, 1PWMi %d, 1PWMas %d, PWM Mode %d, OTr %d, CPUVr %d\n", driver.isBrake(), driver.isCoast(), driver.isOnePWMInvertDirection(), driver.isOnePWMAsynchronousRectification(), 
+			driver.getPWMMode(), driver.isOvertemperatureReporting(), driver.isDisableGateDriveFault(), driver.isDisableChargePumpUndervoltage());
+		Serial.printf("VDS %d, OCP %d, tOCP %d, dt %d\n", driver.getVDSLevel(), driver.getOCPMode(), driver.getOCPDeglitchTime(), driver.getDeadTime());
+		Serial.printf("Currents : HN %d HP %d LN %d LP%d\n", driver.getHighSideDischargeCurrent(), driver.getHighSideChargeCurrent(), driver.getLowSideDischargeCurrent(), driver.getLowSideChargeCurrent());
+		#endif
+		
+		
 		//driver.clearFaults();
 	}
 	#endif

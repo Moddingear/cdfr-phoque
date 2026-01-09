@@ -92,7 +92,7 @@ void  MX_ADC1_Init(ADC_HandleTypeDef* hadc1)
 	hadc1->Init.LowPowerAutoWait = DISABLE;
 	hadc1->Init.ContinuousConvMode = DISABLE;
 
-	hadc1->Init.NbrOfConversion = 3 + READ_BEMF;
+	hadc1->Init.NbrOfConversion = 3 + READ_BEMF * 2;
 
 	hadc1->Init.DiscontinuousConvMode = DISABLE;
 	hadc1->Init.ExternalTrigConv = ADC_EXTERNALTRIG_T1_TRGO;
@@ -110,13 +110,13 @@ void  MX_ADC1_Init(ADC_HandleTypeDef* hadc1)
 	multimode.Mode = ADC_MODE_INDEPENDENT;
 	if (HAL_ADCEx_MultiModeConfigChannel(hadc1, &multimode) != HAL_OK)
 	{
-		SIMPLEFOC_DEBUG("HAL_ADCEx_MultiModeConfigChannel failed!");
+		SIMPLEFOC_DEBUG("HAL_ADCEx_MultiModeConfigChannel 1 failed!");
 	}
 	/** Configure Regular Channel (Opamp 1 / phase 3 current)
 	*/
 	sConfig.Channel = ADC_CHANNEL_13;  // OP1_OUT is ADC1_IN13 for internal channel
 	sConfig.Rank = ADC_REGULAR_RANK_1;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
@@ -126,11 +126,11 @@ void  MX_ADC1_Init(ADC_HandleTypeDef* hadc1)
 	}
 
 	#if READ_BEMF
-	/* Configure Regular Channel (PA2 / BEMF Phase 1)
+	/* Configure Regular Channel (PA2 / BEMF1 / Phase 3)
 	*/
 	sConfig.Channel = ADC_CHANNEL_3;
 	sConfig.Rank = ADC_REGULAR_RANK_2;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
@@ -139,11 +139,11 @@ void  MX_ADC1_Init(ADC_HandleTypeDef* hadc1)
 		SIMPLEFOC_DEBUG("HAL_ADC_ConfigChannel failed!");
 	}
 
-	/* Configure Regular Channel (PB1 / BEMF Phase 3)
+	/* Configure Regular Channel (PB1 / BEMF3 / Phase 1)
 	*/
 	sConfig.Channel = ADC_CHANNEL_12;
 	sConfig.Rank = ADC_REGULAR_RANK_3;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
@@ -225,19 +225,11 @@ void MX_ADC2_Init(ADC_HandleTypeDef* hadc2)
 		SIMPLEFOC_DEBUG("HAL_ADC_Init failed!");
 	}
 
-	/** Configure the ADC multi-mode 
-	*/
-	multimode.Mode = ADC_MODE_INDEPENDENT;
-	if (HAL_ADCEx_MultiModeConfigChannel(hadc2, &multimode) != HAL_OK)
-	{
-		SIMPLEFOC_DEBUG("HAL_ADCEx_MultiModeConfigChannel failed!");
-	}
-
 	/** Configure Regular Channel (Opamp 2 / phase 2 current)
 	*/
 	sConfig.Channel = ADC_CHANNEL_16;  // OP2_OUT is ADC2_IN16 for internal channel
 	sConfig.Rank = ADC_REGULAR_RANK_1;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
@@ -249,7 +241,7 @@ void MX_ADC2_Init(ADC_HandleTypeDef* hadc2)
 	*/
 	sConfig.Channel = ADC_CHANNEL_18;     // OP3_OUT is ADC2_IN18 for internal channel
 	sConfig.Rank = ADC_REGULAR_RANK_2;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
@@ -259,11 +251,11 @@ void MX_ADC2_Init(ADC_HandleTypeDef* hadc2)
 	}
 
 	#if READ_BEMF
-	/** Configure Regular Channel (PC5 / BEMF2)
+	/** Configure Regular Channel (PC5 / BEMF2 / Phase 2)
 	*/
 	sConfig.Channel = ADC_CHANNEL_11;
 	sConfig.Rank = ADC_REGULAR_RANK_3;
-	sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
 	sConfig.OffsetNumber = ADC_OFFSET_NONE;
 	sConfig.Offset = 0;
@@ -330,7 +322,7 @@ void HAL_OPAMP_MspInit(OPAMP_HandleTypeDef* hopamp)
 		PA2     ------> OPAMP1_VOUT
 		PA3     ------> OPAMP1_VINM 
 		*/
-		GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3;
+		GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_3;
 		GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
 		GPIO_InitStruct.Pull = GPIO_NOPULL;
 		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -351,7 +343,7 @@ void HAL_OPAMP_MspInit(OPAMP_HandleTypeDef* hopamp)
 		PA6     ------> OPAMP2_VOUT
 		PA7     ------> OPAMP2_VINP 
 		*/
-		GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
+		GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_7;
 		GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
 		GPIO_InitStruct.Pull = GPIO_NOPULL;
 		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -372,7 +364,7 @@ void HAL_OPAMP_MspInit(OPAMP_HandleTypeDef* hopamp)
 		PB1     ------> OPAMP3_VOUT
 		PB2     ------> OPAMP3_VINM 
 		*/
-		GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2;
+		GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_2;
 		GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
 		GPIO_InitStruct.Pull = GPIO_NOPULL;
 		HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -403,7 +395,7 @@ void HAL_OPAMP_MspDeInit(OPAMP_HandleTypeDef* hopamp)
 		PA2     ------> OPAMP1_VOUT
 		PA3     ------> OPAMP1_VINM 
 		*/
-		HAL_GPIO_DeInit(GPIOA, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
+		HAL_GPIO_DeInit(GPIOA, GPIO_PIN_1|GPIO_PIN_3);
 
 	/* USER CODE BEGIN OPAMP1_MspDeInit 1 */
 
@@ -420,7 +412,7 @@ void HAL_OPAMP_MspDeInit(OPAMP_HandleTypeDef* hopamp)
 		PA6     ------> OPAMP2_VOUT
 		PA7     ------> OPAMP2_VINP 
 		*/
-		HAL_GPIO_DeInit(GPIOA, GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7);
+		HAL_GPIO_DeInit(GPIOA, GPIO_PIN_5|GPIO_PIN_7);
 
 	/* USER CODE BEGIN OPAMP2_MspDeInit 1 */
 
@@ -437,7 +429,7 @@ void HAL_OPAMP_MspDeInit(OPAMP_HandleTypeDef* hopamp)
 		PB1     ------> OPAMP3_VOUT
 		PB2     ------> OPAMP3_VINM 
 		*/
-		HAL_GPIO_DeInit(GPIOB, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2);
+		HAL_GPIO_DeInit(GPIOB, GPIO_PIN_0|GPIO_PIN_2);
 
 	/* USER CODE BEGIN OPAMP3_MspDeInit 1 */
 
