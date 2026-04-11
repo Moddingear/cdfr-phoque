@@ -98,12 +98,12 @@
 
 
 /* Alias */
-#define A_PHASE_UL				PB13
-#define A_PHASE_UH				PA8
+#define A_PHASE_UL				PB15
+#define A_PHASE_UH				PA10
 #define A_PHASE_VL				PB14
 #define A_PHASE_VH				PA9
-#define A_PHASE_WL				PB15
-#define A_PHASE_WH				PA10
+#define A_PHASE_WL				PB13
+#define A_PHASE_WH				PA8
 
 #define PIN_SS_DRIVER			PC14	//Gate driver chip select
 #define PIN_NFAULT				PC15	//Gate driver fault pin

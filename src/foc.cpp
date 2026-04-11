@@ -22,32 +22,21 @@
 
 #define FIND_PP 0
 
-#define D4215 0
-
-#if D4215
-#define POLE_PAIRS 7
-#define KV 650
-#define PHASE_RESISTANCE (85e-3*1.5)
-#define PHASE_INDUCTANCE NOT_SET
-#define HALL_SENSOR 0
-#define MAX_CURRENT 1
-#define MAX_VOLTAGE 1
-#else
 #define POLE_PAIRS 7
 #define KV 120
-#define PHASE_RESISTANCE (160e-3*1.5)
-#define PHASE_INDUCTANCE (173e-6*1.5)
+#define PHASE_RESISTANCE (172e-3)
+#define PHASE_INDUCTANCE_Q (110e-6)
+#define PHASE_INDUCTANCE_D (90e-6)
 #define HALL_SENSOR 0
 #define MAX_CURRENT 40
 #define MAX_VOLTAGE 20
-#endif
 
 #define RTL 0
 
 //Phase inductance : dt/ln(V0/V1)*R
 
 // Motor instance
-BLDCMotor motor(FIND_PP ? 1 : POLE_PAIRS, PHASE_RESISTANCE, KV, PHASE_INDUCTANCE);
+BLDCMotor motor(FIND_PP ? 1 : POLE_PAIRS, PHASE_RESISTANCE, KV, PHASE_INDUCTANCE_Q, PHASE_INDUCTANCE_D);
 #ifdef ARDUINO_PHOQUE1
 STSPIN32G4 driver;
 LowsideCurrentSense current_sensor(-(1.714*4.f), -1, -2, -3);
@@ -58,8 +47,8 @@ BLDCDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH
 LowsideCurrentSense current_sensor(-(1.714*4.f), A_OP1_OUT, A_OP2_OUT, A_OP3_OUT);
 #endif
 #ifdef ARDUINO_PHOQUE2
-DRV832xDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL, PIN_SS_DRIVER);
-LowsideCurrentSense current_sensor(3e-3, 20, A_CURRU, A_CURRV, A_CURRW);
+DRV832xDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL, PIN_SS_DRIVER, NOT_SET, NOT_SET, 8000000);
+LowsideCurrentSense current_sensor(3e-3, 40, A_CURRU, A_CURRV, A_CURRW);
 #endif
 
 #if HALL_SENSOR
@@ -196,7 +185,7 @@ void param_foc()
 
 	motor.modulation_centered = true;
 
-	motor.PID_velocity.limit *= 10;
+	//motor.PID_velocity.limit *= 10;
 	// maximal voltage to be set to the motor
 	//motor.voltage_limit = get_max_voltage(0);
 
@@ -216,6 +205,16 @@ void param_foc()
 	motor.PID_current_q.limit = driver.voltage_power_supply;
 	motor.PID_current_d.limit = driver.voltage_power_supply;
 
+	motor.PID_current_q.P = 1.382;
+	motor.PID_current_q.I = 2166;
+	motor.PID_current_q.D = 0;
+	motor.LPF_current_q.Tf = 16e-6;
+
+	motor.PID_current_d.P = 1.127;
+	motor.PID_current_d.I = 2166;
+	motor.PID_current_d.D = 0;
+	motor.LPF_current_d.Tf = 16e-6;
+
 	//motor.PID_current_d.I = 0;
 	//motor.PID_current_q.I = 0;
 }
@@ -229,6 +228,8 @@ void param_find_pole_pairs()
 
 void init_sensors()
 {
+	pinMode(I2C_SCL, OUTPUT);
+	digitalWrite(I2C_SCL, HIGH);
 	Serial.printf("Starting driver init\n");
 	driver.init();
 	#if defined(ARDUINO_PHOQUE1) && 0
@@ -261,6 +262,16 @@ void init_sensors()
 	#ifdef ARDUINO_B_G431B_ESC1
 	Wire.setClock(400000UL);
 	#endif
+	#endif
+	#ifdef ARDUINO_PHOQUE2
+	driver.setRegistersLocked(false);
+	driver.setCurrentSenseGain(CSAGain_40);
+	driver.setHighSideChargeCurrent(IDRIVEP_1000mA);
+	driver.setHighSideDischargeCurrent(IDRIVEN_2000mA);
+	driver.setLowSideChargeCurrent(IDRIVEP_1000mA);
+	driver.setLowSideDischargeCurrent(IDRIVEN_2000mA);
+	driver.setDriveTime(TDRIVE_4000ns);
+	
 	#endif
 	// link position sensor
 	motor.linkSensor(&position_sensor);
@@ -358,7 +369,6 @@ void FOC::setup()
 	{
 		return;
 	}
-	
     SimpleFOC_CORDIC_Config(); 
 	
 	// enable more verbose output for debugging
@@ -409,8 +419,11 @@ void FOC::setup()
 	//commander.verbose = VerboseMode::machine_readable;
 	#endif
 
-	#ifdef ARDUINO_PHOQUE1
+	#if defined(ARDUINO_PHOQUE1)
 	attachInterrupt(PIN_NFAULT, OnFault, RISING);
+	#endif
+	#if defined(ARDUINO_PHOQUE2)
+	pinMode(PIN_NFAULT, INPUT);
 	#endif
 
 	#if RTL
@@ -460,6 +473,9 @@ void FOC::RealTimeLoop()
 	#endif
 }
 
+PhaseCurrent_s currents;
+DQCurrent_s dqcurr;
+
 void FOC::loop()
 {
 	static int i = 0;
@@ -468,12 +484,19 @@ void FOC::loop()
 	{
 		return;
 	}
-	
+	currents = current_sensor.getPhaseCurrents();
+	dqcurr = current_sensor.getFOCCurrents(motor.electricalAngle());
 	auto temp = get_temperature();
 	#if 0
     update_vbus();
 	motor.current_limit = get_max_current(temp);
 	#endif
+
+	if (digitalRead(PIN_NFAULT) == LOW && motor.enabled)
+	{
+		motor.disable();
+		Serial.printf("Driver reported a fault, disabling\n");
+	}
 
 	if (temp > max_temp && motor.enabled)
 	{
@@ -528,10 +551,13 @@ void FOC::loop()
 	if (millis() - lastPrint > 1000)
 	{
 		lastPrint = millis();
+		digitalWrite(I2C_SCL, LOW);
 		auto status = driver.getStatus();
+		digitalWrite(I2C_SCL, HIGH);
 		if (status.isFault())
 		{
-			Serial.printf("Fault detected!\n");
+			Serial.printf("Fault detected %d!\n", millis());
+			driver.clearFault();
 		}
 		if (status.isOverCurrent())
 		{
@@ -571,12 +597,15 @@ void FOC::loop()
 		}
 		
 		#if 0
-		Serial.printf("Brake %d, Coast %d, 1PWMi %d, 1PWMas %d, PWM Mode %d, OTr %d, CPUVr %d\n", driver.isBrake(), driver.isCoast(), driver.isOnePWMInvertDirection(), driver.isOnePWMAsynchronousRectification(), 
-			driver.getPWMMode(), driver.isOvertemperatureReporting(), driver.isDisableGateDriveFault(), driver.isDisableChargePumpUndervoltage());
-		Serial.printf("VDS %d, OCP %d, tOCP %d, dt %d\n", driver.getVDSLevel(), driver.getOCPMode(), driver.getOCPDeglitchTime(), driver.getDeadTime());
-		Serial.printf("Currents : HN %d HP %d LN %d LP%d\n", driver.getHighSideDischargeCurrent(), driver.getHighSideChargeCurrent(), driver.getLowSideDischargeCurrent(), driver.getLowSideChargeCurrent());
+		if (!motor.enabled)
+		{
+			Serial.printf("Brake %d, Coast %d, 1PWMi %d, 1PWMas %d, PWM Mode %d, OTr %d, CPUVr %d\n", driver.isBrake(), driver.isCoast(), driver.isOnePWMInvertDirection(), driver.isOnePWMAsynchronousRectification(), 
+				driver.getPWMMode(), driver.isOvertemperatureReporting(), driver.isDisableGateDriveFault(), driver.isDisableChargePumpUndervoltage());
+			Serial.printf("VDS %d, OCP %d, tOCP %d, dt %d\n", driver.getVDSLevel(), driver.getOCPMode(), driver.getOCPDeglitchTime(), driver.getDeadTime());
+			Serial.printf("TDrive %d, Currents : HN %d HP %d LN %d LP%d\n", driver.getDriveTime(), driver.getHighSideDischargeCurrent(), driver.getHighSideChargeCurrent(), driver.getLowSideDischargeCurrent(), driver.getLowSideChargeCurrent());
+			Serial.printf("Current sense Gain : %d\n", driver.getCurrentSenseGain());
+		}
 		#endif
-		
 		
 		//driver.clearFaults();
 	}

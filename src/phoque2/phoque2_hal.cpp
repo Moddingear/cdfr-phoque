@@ -83,7 +83,7 @@ void  MX_ADC1_Init(ADC_HandleTypeDef* hadc1)
 	/** Common config 
 	*/
 	hadc1->Instance = ADC1;
-	hadc1->Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV16;
+	hadc1->Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV8;
 	hadc1->Init.Resolution = ADC_RESOLUTION_12B;
 	hadc1->Init.DataAlign = ADC_DATAALIGN_RIGHT;
 	hadc1->Init.GainCompensation = 0;
@@ -112,9 +112,9 @@ void  MX_ADC1_Init(ADC_HandleTypeDef* hadc1)
 	{
 		SIMPLEFOC_DEBUG("HAL_ADCEx_MultiModeConfigChannel 1 failed!");
 	}
-	/** Configure Regular Channel (Opamp 1 / phase 3 current)
+	/** Configure Regular Channel (PA1 / phase U current)
 	*/
-	sConfig.Channel = ADC_CHANNEL_13;
+	sConfig.Channel = ADC_CHANNEL_2;
 	sConfig.Rank = ADC_REGULAR_RANK_1;
 	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -203,7 +203,7 @@ void MX_ADC2_Init(ADC_HandleTypeDef* hadc2)
 	/** Common config 
 	*/
 	hadc2->Instance = ADC2;
-	hadc2->Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV16;
+	hadc2->Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV8;
 	hadc2->Init.Resolution = ADC_RESOLUTION_12B;
 	hadc2->Init.DataAlign = ADC_DATAALIGN_RIGHT;
 	hadc2->Init.GainCompensation = 0;
@@ -225,9 +225,9 @@ void MX_ADC2_Init(ADC_HandleTypeDef* hadc2)
 		SIMPLEFOC_DEBUG("HAL_ADC_Init failed!");
 	}
 
-	/** Configure Regular Channel (PA0 / phase U current)
+	/** Configure Regular Channel (PC4 / phase V current)
 	*/
-	sConfig.Channel = ADC_CHANNEL_2;
+	sConfig.Channel = ADC_CHANNEL_5;
 	sConfig.Rank = ADC_REGULAR_RANK_1;
 	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;
@@ -237,9 +237,9 @@ void MX_ADC2_Init(ADC_HandleTypeDef* hadc2)
 	{
 		SIMPLEFOC_DEBUG("HAL_ADC_ConfigChannel failed!");
 	}
-	/** Configure Regular Channel (PC4 / phase V current)
+	/** Configure Regular Channel (PB2 / phase W current)
 	*/
-	sConfig.Channel = ADC_CHANNEL_5;
+	sConfig.Channel = ADC_CHANNEL_12;
 	sConfig.Rank = ADC_REGULAR_RANK_2;
 	sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
 	sConfig.SingleDiff = ADC_SINGLE_ENDED;

@@ -50,15 +50,15 @@ float _readADCVoltageLowSide(const int pin, const void* cs_params){
 	{
 	case A_CURRU:
 	case -1:
-		raw_adc = adcBuffer2[0];
+		raw_adc = adcBuffer1[0];
 		break;
 	case A_CURRV:
 	case -2:
-		raw_adc = adcBuffer2[1];
+		raw_adc = adcBuffer2[0];
 		break;
 	case A_CURRW:
 	case -3:
-		raw_adc = adcBuffer1[0];
+		raw_adc = adcBuffer2[1];
 		break;
 	#if READ_BEMF
 	case A_BEMFU:

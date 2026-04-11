@@ -2,7 +2,7 @@
   "build": {
     "core": "stm32",
     "cpu": "cortex-m4",
-    "extra_flags": "-DSTM32G4xx -DSTM32G431xx -DARDUINO_PHOQUE1 -DARDUINO_GENERIC_G431VBTX",
+    "extra_flags": "-DSTM32G4xx -DSTM32G431xx -DARDUINO_PHOQUE1 -DARDUINO_GENERIC_G431VBTX -DSIMPLEFOC_HAL_OVERRIDE",
     "f_cpu": "170000000L",
     "mcu": "stm32g431vbt6",
     "product_line": "STM32G431xx",
