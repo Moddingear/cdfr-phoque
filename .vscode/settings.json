@@ -3,6 +3,8 @@
         "algorithm": "cpp",
         "deque": "cpp",
         "unordered_map": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "peripheralpins.h": "c",
+        "arduino.h": "c"
     }
 }

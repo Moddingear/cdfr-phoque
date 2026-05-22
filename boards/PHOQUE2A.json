@@ -2,11 +2,11 @@
   "build": {
     "core": "stm32",
     "cpu": "cortex-m4",
-    "extra_flags": "-DSTM32G4 -DSTM32G4xx -DSTM32G431xx -DARDUINO_PHOQUE2 -DARDUINO_GENERIC_G431CBUX -DSIMPLEFOC_HAL_OVERRIDE",
+    "extra_flags": "-DSTM32G4 -DSTM32G4xx -DSTM32G431xx -DARDUINO_PHOQUE -DARDUINO_PHOQUE2a -DARDUINO_GENERIC_G431CBUX",
     "f_cpu": "170000000L",
     "mcu": "stm32g431cbu6",
     "product_line": "STM32G431xx",
-    "variant": "PHOQUE2"
+    "variant": "PHOQUE2A"
   },
   "connectivity": [
     "can"
@@ -25,7 +25,7 @@
     "libopencm3",
     "stm32cube"
   ],
-  "name": "PHOQUE2 Brushless Driver",
+  "name": "PHOQUE2a Brushless Driver",
   "upload": {
     "maximum_ram_size": 32768,
     "maximum_size": 131072,

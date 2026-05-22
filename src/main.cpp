@@ -10,9 +10,7 @@
 #include <can.hpp>
 #endif
 #include <CANRobot.hpp>
-#include <map>
 #include <USBSerial.h>
-#include <stm32g4xx_hal_rng.h>
 
 #if 0
 HardwareSerial Serial1(A_USART_RX, A_USART_TX);
@@ -22,13 +20,12 @@ int potentiometer_value = 0;
 int last_message_timestamp = 0;
 int vbus_ok = 0;
 
-std::map<int16_t, uint64_t> discriminators;
-
 
 void (*FOCFunctiontoRun)(void) = nullptr;
 
 #if SIMPLECANLIB
 SimpleCan* CanInstance;
+#if 0
 FilterDefinition filter[] ={
 { //accept only us
 	.FilterIndex = 0,
@@ -55,12 +52,13 @@ FilterDefinition filter[] ={
 }
 #endif
 };
+#endif
 #else
 
 #endif
 
 uint32_t can_identifier = 0;
-
+#if 0
 void SendError(RobotCAN::Error_packet::errors error)
 {
 	RobotCAN::Error_packet message;
@@ -79,10 +77,12 @@ void SendHello()
 	CanInstance->SendMessage(reinterpret_cast<uint8_t*>(&message), sizeof(message), RobotCAN::master_address_low_priority);
 	#endif
 }
+#endif
 
 #if SIMPLECANLIB
 void OnReceive(const SimpleCanRxHeader rxHeader, const uint8_t *rxData, void* userData)
 {
+	#if 0
 	if (rxHeader.DataLength < 1)
 	{
 		Serial.printf("Message too short, ignored (ID %d, length %d)\n", rxHeader.Identifier, rxHeader.DataLength);
@@ -218,37 +218,45 @@ void OnReceive(const SimpleCanRxHeader rxHeader, const uint8_t *rxData, void* us
 		Serial.printf("Unhandled packet identifier %#x from %#x\n", type, rxHeader.Identifier);
 		break;
 	}
+	#else 
+	if (rxHeader.DataLength == sizeof(float))
+	{
+		bool greater = rxHeader.Identifier > can_identifier;
+		const float magnification = 2.f;
+		float target = *reinterpret_cast<const float*>(rxData) * (greater ? magnification : 1/magnification);
+		FOC::set_target(target);
+	}
+	#endif
 }
 
+#if 0
 bool FilterFunc(int CanID)
 {
 	return CanID == can_identifier;
 }
+#endif
 #endif
 
 void setup()
 {
 	// use monitoring with serial
 	Serial.begin(BAUD_RATE);
-	
-	#ifdef ARDUINO_B_G431B_ESC1
-	pinMode(A_BUTTON, INPUT);
+
+	#if defined(ARDUINO_PHOQUE1) || defined(ARDUINO_PHOQUE2)
+	pinMode(BRAKE_RESISTOR, OUTPUT);
+	digitalWrite(BRAKE_RESISTOR, LOW);
 	#endif
+
 	pinMode(LED_BUILTIN, OUTPUT);
 	pinMode(A_VBUS, INPUT_ANALOG);
+	pinMode(CAN_PWR, OUTPUT);
+	digitalWrite(CAN_PWR, HIGH);
 
 	for (size_t i = 0; i < 100; i++)
 	{
 		delay(100);
 		digitalWrite(LED_BUILTIN, i & 1);
 	}
-	#ifdef ARDUINO_B_G431B_ESC1
-	while (HSE_VALUE != 8000000UL)
-	{
-		//go set HSE_VALUE to 8000000UL in .platformio/packages/framework-arduinoststm32/variants/STM32G4xx/G431C(6-8-B)U_G441CBU/variant_B_G431B_ESC1.h
-		Serial.println("Wrong HSE value!");
-	}
-	#endif
 
 	analogReadResolution(12);
 	potentiometer_value = analogRead(A_POTENTIOMETER);
@@ -261,7 +269,7 @@ void setup()
 	{
 		can_identifier = RobotCAN::master_address_high_priority+1;
 	}
-	#if SIMPLECANLIB
+	#if SIMPLECANLIB && 0
 	filter[0].FilterID1 = can_identifier;
 	filter[0].FilterID2 = 0x7ff;
 	#endif
@@ -274,28 +282,25 @@ void setup()
 	Serial.printf("Potentiometer value is %d, end of the line is %d, we are ID %d\n", potentiometer_value, end_of_line, can_identifier);
 
 	//FOC::setup();
-	#ifdef ARDUINO_B_G431B_ESC1
-	pinMode(A_CAN_TERM, OUTPUT);
-	digitalWrite(A_CAN_TERM, end_of_line);
-	#endif
 
 	#if SIMPLECANLIB
-	CanInstance = CreateCanLib(A_CAN_TX, A_CAN_RX);
-	CanInstance->Init(Kbit250);
+	CanInstance = CreateCanLib(CAN_TX, CAN_RX);
+	CanInstance->Init(Mbit1);
 	CanInstance->Start();
-	CanInstance->SetBusTermination(end_of_line);
 	CanInstance->ActivateNotification(0, OnReceive, nullptr);
+	#if 0
 	for (size_t i = 0; i < sizeof(filter)/sizeof(filter[0]); i++)
 	{
 		auto status = CanInstance->ConfigFilter(&filter[i]);
 		Serial.printf("Filter %d status %d\n", i, status);
 	}
 	CanInstance->ConfigGlobalFilter();
+	#endif
 	#else
 	
 	#endif
 
-	SendHello();
+	//SendHello();
 
 	Serial.println("Driver ready.");
 }
@@ -305,15 +310,7 @@ void loop()
 	static uint64_t last_feedback = millis();
 	bool led_status = (millis()%1000) > 500;
 	digitalWrite(LED_BUILTIN, led_status);
-
 	
-	#ifdef ARDUINO_B_G431B_ESC1
-	if (!digitalRead(A_BUTTON))
-	{
-		Serial.printf("Resetting...\n");
-		NVIC_SystemReset();
-	}
-	#endif
 	#if SIMPLECANLIB
 	CanInstance->Loop();
 	#endif
@@ -337,9 +334,10 @@ void loop()
 	}
 	#endif
 	FOC::loop();
-	if (FOC::IsSetup() && last_feedback + 100 < millis())
+	if (FOC::IsSetup() && last_feedback < millis())
 	{
 		last_feedback = millis();
+		#if 0
 		RobotCAN::Motor_feedback message;
 		message.angle = FOC::get_angle();
 		message.temperature = FOC::get_temperature()*2;
@@ -347,10 +345,15 @@ void loop()
 		#if SIMPLECANLIB
 		CanInstance->SendMessage(reinterpret_cast<uint8_t*>(&message), sizeof(message), RobotCAN::master_address_low_priority);
 		#endif
+		#else
+		float angle = FOC::get_angle();
+		CanInstance->SendMessage(reinterpret_cast<uint8_t*>(&angle), sizeof(angle), can_identifier);
+		#endif
 	}
+	#if 0
 	if (last_message_timestamp + 5000 < millis())
 	{
 		SendHello();
 	}
-	
+	#endif
 }

@@ -1,22 +1,25 @@
 #include <foc.hpp>
 #include <Arduino.h>
 #include <BLDCMotor.h>
+#if COMMANDER
 #include <communication/Commander.h>
+#endif
 #include <utilities/stm32math/STM32G4CORDICTrigFunctions.h>
 #ifdef ARDUINO_PHOQUE1
 #include <drivers/stspin32g4/STSPIN32G4.h>
 #include <encoders/sc60228/MagneticSensorSC60228.h>
+#include <current_sense/LowsideCurrentSense.h>
 #endif
-#ifdef ARDUINO_B_G431B_ESC1
-#include <drivers/BLDCDriver6PWM.h>
-#include <encoders/as5600/MagneticSensorAS5600.h>
-#endif
-#ifdef ARDUINO_PHOQUE2
+#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
 #include <drivers/drv832x/drv832x.h>
 #include <encoders/sc60228/MagneticSensorSC60228.h>
+#if defined(ARDUINO_PHOQUE2)
+#include <current_sense/phoque2/Phoque2_CurrentSense.hpp>
 #endif
-#include <current_sense/LowsideCurrentSense.h>
-#include <current_sense/hardware_specific/stm32/stm32_mcu.h>
+#if defined(ARDUINO_PHOQUE2a)
+#include <current_sense/phoque2a/Phoque2a_CurrentSense.hpp>
+#endif
+#endif
 
 #include <math.hpp>
 
@@ -24,12 +27,14 @@
 
 #define POLE_PAIRS 7
 #define KV 120
-#define PHASE_RESISTANCE (172e-3)
-#define PHASE_INDUCTANCE_Q (110e-6)
-#define PHASE_INDUCTANCE_D (90e-6)
+#define PHASE_RESISTANCE 0.1//(172e-3)
+#define PHASE_INDUCTANCE_Q 23e-6//(110e-6)
+#define PHASE_INDUCTANCE_D 17e-6//(90e-6)
 #define HALL_SENSOR 0
-#define MAX_CURRENT 40
+#define MAX_CURRENT 2
 #define MAX_VOLTAGE 20
+#define MIN_VOLTAGE 8
+#define REARM_VOLTAGE 10
 
 #define RTL 0
 
@@ -41,32 +46,17 @@ BLDCMotor motor(FIND_PP ? 1 : POLE_PAIRS, PHASE_RESISTANCE, KV, PHASE_INDUCTANCE
 STSPIN32G4 driver;
 LowsideCurrentSense current_sensor(-(1.714*4.f), -1, -2, -3);
 #endif
-#ifdef ARDUINO_B_G431B_ESC1
-BLDCDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL);
-// Gain calculation shown at https://community.simplefoc.com/t/b-g431b-esc1-current-control/521/21
-LowsideCurrentSense current_sensor(-(1.714*4.f), A_OP1_OUT, A_OP2_OUT, A_OP3_OUT);
-#endif
-#ifdef ARDUINO_PHOQUE2
+#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
 DRV832xDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL, PIN_SS_DRIVER, NOT_SET, NOT_SET, 8000000);
-LowsideCurrentSense current_sensor(3e-3, 40, A_CURRU, A_CURRV, A_CURRW);
+Phoque2a_CurrentSense current_sensor(3e-3f, 40.f);
 #endif
 
-#if HALL_SENSOR
-HallSensor position_sensor(A_HALL1, A_HALL2, A_HALL3, POLE_PAIRS);
-void doA(){position_sensor.handleA();}
-void doB(){position_sensor.handleB();}
-void doC(){position_sensor.handleC();}
-#else
-#if defined(ARDUINO_PHOQUE1) || defined(ARDUINO_PHOQUE2)
+#if defined(ARDUINO_PHOQUE)
 SPIClass magspi(PIN_SPI_MOSI, PIN_SPI_MISO, PIN_SPI_SCK);
 MagneticSensorSC60228 position_sensor(PIN_SS_MAG_ANGLE);
 #endif
-#ifdef ARDUINO_B_G431B_ESC1
-MagneticSensorAS5600 position_sensor;
-#endif
-#endif
 
-#if STANDALONE
+#if COMMANDER
 Commander commander(Serial);
 
 void OnMotor(char* cmd)
@@ -81,19 +71,7 @@ bool foc_setup = false;
 constexpr float Ntc2TempV(float ADCVoltage)
 {
 	// Formula: https://www.giangrandi.org/electronics/ntc/ntc.shtml
-	#ifdef ARDUINO_B_G431B_ESC1
-	const float ResistorBalance = 4700.0;
-	const float Beta  = 3425.0F;
-	const float RoomTempI = 1.0F/298.15F; //[K]
-	const float Rt = ResistorBalance * ((3.3F / ADCVoltage)-1);
-	const float R25 = 10000.0F;
-	
-	float T = 1.0F/((logf(Rt/R25)/Beta)+RoomTempI);
-	T = T - 273.15;
-
-	return T;
-	#endif
-	#if defined(ARDUINO_PHOQUE1) || defined(ARDUINO_PHOQUE2)
+	#if defined(ARDUINO_PHOQUE)
 	//B = ln(R/R0)/(1/T-1/T0)
 	//V = R/(R+R0)*3.3
 	//thus
@@ -108,7 +86,11 @@ float FOC::get_temperature()
 	float temp_raw;
 	if (current_sensor.initialized)
 	{
+		#if defined(ARDUINO_PHOQUE)
+		temp_raw = current_sensor.readMillivolt(A_TEMPERATURE);
+		#else
 		temp_raw = _readADCVoltageLowSide(A_TEMPERATURE, current_sensor.params);
+		#endif
 	}
 	else
 	{
@@ -140,18 +122,19 @@ float FOC::get_vbus()
 	float vbus_raw;
 	if (current_sensor.initialized)
 	{
+		#if defined(ARDUINO_PHOQUE)
+		vbus_raw = current_sensor.readMillivolt(A_VBUS);
+		#else
 		vbus_raw = _readADCVoltageLowSide(A_VBUS, current_sensor.params);
+		#endif
 	}
 	else
 	{
 		auto read = analogRead(A_VBUS);
 		vbus_raw = read * (3.3f) / ((1<<12)-1);
 	}
-	#if defined(ARDUINO_PHOQUE1) || defined(ARDUINO_PHOQUE2)
+	#if defined(ARDUINO_PHOQUE)
 	return vbus_raw * VBUS_MUL_FACTOR;
-	#endif
-	#if defined(ARDUINO_B_G431B_ESC1)
-	return vbus_raw * (169+18)/18.f;
 	#endif
 }
 
@@ -160,7 +143,10 @@ void update_vbus()
 	auto &vbus = driver.voltage_power_supply;
 
 	vbus = FOC::get_vbus();
-	motor.voltage_limit = min(get_max_voltage(FOC::get_temperature()), vbus/2);
+	auto temperature = FOC::get_temperature();
+	auto current_limit = get_max_current(temperature);
+	motor.voltage_limit = min(min(get_max_voltage(temperature), vbus/2), motor.phase_resistance*current_limit*2);
+	motor.current_limit = current_limit;
 	motor.PID_current_q.limit = motor.voltage_limit;
 	motor.PID_current_d.limit = motor.voltage_limit;
 }
@@ -170,7 +156,7 @@ void param_foc()
 	// driver config
 	// power supply voltage [V]
 	driver.voltage_power_supply = 20;
-	driver.pwm_frequency = 20000;
+	driver.pwm_frequency = 22000;
 	//driver.voltage_limit = 4;
 
 	motor.voltage_sensor_align = 4*PHASE_RESISTANCE;
@@ -181,9 +167,9 @@ void param_foc()
 	motor.torque_controller = TorqueControlType::voltage;
 
 	// set motion control loop to be used
-	motor.controller = MotionControlType::torque;
+	motor.controller = MotionControlType::angle_nocascade;
 
-	motor.modulation_centered = true;
+	motor.modulation_centered = false;
 
 	//motor.PID_velocity.limit *= 10;
 	// maximal voltage to be set to the motor
@@ -197,23 +183,11 @@ void param_foc()
 	motor.motion_downsample = 0;
 	motor.monitor_downsample = 1000;
 	motor.monitor_decimals = 4;
-	#if defined(ARDUINO_B_G431B_ESC1)
-	position_sensor.closeTransactions = false;
-	#endif
+	motor.P_angle.P = 1;
 	current_sensor.skip_align = true;
 
 	motor.PID_current_q.limit = driver.voltage_power_supply;
 	motor.PID_current_d.limit = driver.voltage_power_supply;
-
-	motor.PID_current_q.P = 1.382;
-	motor.PID_current_q.I = 2166;
-	motor.PID_current_q.D = 0;
-	motor.LPF_current_q.Tf = 16e-6;
-
-	motor.PID_current_d.P = 1.127;
-	motor.PID_current_d.I = 2166;
-	motor.PID_current_d.D = 0;
-	motor.LPF_current_d.Tf = 16e-6;
 
 	//motor.PID_current_d.I = 0;
 	//motor.PID_current_q.I = 0;
@@ -259,11 +233,8 @@ void init_sensors()
 	#if HALL_SENSOR
 	position_sensor.enableInterrupts(doA, doB, doC); //only for hall
 	#else
-	#ifdef ARDUINO_B_G431B_ESC1
-	Wire.setClock(400000UL);
 	#endif
-	#endif
-	#ifdef ARDUINO_PHOQUE2
+	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
 	driver.setRegistersLocked(false);
 	driver.setCurrentSenseGain(CSAGain_40);
 	driver.setHighSideChargeCurrent(IDRIVEP_1000mA);
@@ -394,22 +365,17 @@ void FOC::setup()
 	foc_setup = true;
 	#endif
 
-	Serial.printf("Motor ready. Deadzone %f\n", driver.dead_zone);
+	motor.tuneCurrentController(5000);
+	motor.characteriseMotor(1);
+	motor.tuneCurrentController(5000);
 
-	#if HALL_SENSOR
-	Serial.printf("Hall sensor type %d\n", position_sensor.hall_type);
-	#else
-	#ifdef ARDUINO_B_G431B_ESC1
-	auto status = position_sensor.readStatus();
-	Serial.printf("Magnetic sensor detected %d, too weak %d, too strong %d, magnitude %d\n", status.md, status.ml, status.mh, position_sensor.readMagnitude());
-	#endif
-	#endif
+	Serial.printf("Motor ready. Deadzone %f\n", driver.dead_zone);
 	
 	//FOC::loop();
-    motor.disable();
+    //motor.disable();
 	//_delay(10000);
 
-	#if STANDALONE
+	#if COMMANDER
 	motor.useMonitoring(Serial);
 	motor.monitor_variables = 0;
 	char motor_id = 'M';
@@ -422,7 +388,7 @@ void FOC::setup()
 	#if defined(ARDUINO_PHOQUE1)
 	attachInterrupt(PIN_NFAULT, OnFault, RISING);
 	#endif
-	#if defined(ARDUINO_PHOQUE2)
+	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
 	pinMode(PIN_NFAULT, INPUT);
 	#endif
 
@@ -448,8 +414,8 @@ float rtl_dt;
 
 void FOC::RealTimeLoop()
 {
-	motor.loopFOC();
 	motor.move();
+	motor.loopFOC();
 
 	#if 0
 	static float last_shaft_angle = motor.shaftAngle();
@@ -487,28 +453,59 @@ void FOC::loop()
 	currents = current_sensor.getPhaseCurrents();
 	dqcurr = current_sensor.getFOCCurrents(motor.electricalAngle());
 	auto temp = get_temperature();
-	#if 0
+	#if 1
     update_vbus();
-	motor.current_limit = get_max_current(temp);
 	#endif
+
+	bool motor_fault = false;
+
+
+	
+	
 
 	if (digitalRead(PIN_NFAULT) == LOW && motor.enabled)
 	{
-		motor.disable();
-		Serial.printf("Driver reported a fault, disabling\n");
+		motor_fault = true;
+		if (motor.enabled)
+		{
+			Serial.printf("Driver reported a fault, disabling\n");
+		}
 	}
 
 	if (temp > max_temp && motor.enabled)
 	{
-		motor.disable();
-		Serial.printf("Over temp! %f\n", temp);
+		motor_fault = true;
+		if (motor.enabled)
+		{
+			Serial.printf("Over temp! %f\n", temp);
+		}
 	}
 
-	if (get_vbus() < 8 && motor.enabled)
+	if (get_vbus() < MIN_VOLTAGE && motor.enabled)
 	{
-		motor.disable();
-		Serial.printf("Voltage too low, disabling\n");
+		motor_fault = true;
+		if (motor.enabled)
+		{
+			Serial.printf("Voltage too low, disabling\n");
+		}
 	}
+
+	if (motor_fault)
+	{
+		if (motor.enabled)
+		{
+			motor.disable();
+		}
+	}
+	else
+	{
+		if (get_vbus() > REARM_VOLTAGE && !motor.enabled)
+		{
+			motor.enable();
+		}
+	}
+	
+	
 
 	#if RTL
 	if (rtl_dt > 2.f/driver.pwm_frequency)
@@ -546,7 +543,7 @@ void FOC::loop()
 	}
 	#endif
 
-	#if defined(ARDUINO_PHOQUE2)
+	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
 	static auto lastPrint = millis();
 	if (millis() - lastPrint > 1000)
 	{
@@ -643,7 +640,7 @@ void FOC::loop()
 	#endif
 #endif
 
-	#if STANDALONE
+	#if COMMANDER
 	motor.monitor();
 	commander.run();
 	#endif

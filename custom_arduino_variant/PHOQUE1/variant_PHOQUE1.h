@@ -173,37 +173,34 @@
 
 #define A_CURR2_H				PA7		//CS2 connected to phase V and opamp 2
 #define A_CURR2_L				PA5
-#define A_BEMF2					PC5
+#define A_BEMF2					PA6
 
 #define A_CURR3_H				PB0		//CS3 connected to phase U and opamp 3
 #define A_CURR3_L				PB2
-#define A_BEMF3					PB1
+#define A_BEMF3					PC4
 
-#define A_POTENTIOMETER			PC1
-#define A_TEMPERATURE			PF1
-#define A_TEMP_EXT				PF0
+#define A_POTENTIOMETER			PC0
+#define A_TEMPERATURE			PC5
 
 #define NTC_B_CONSTANT			3455	//B = ln(R/R0)/(1/T-1/T0)
 #define NTC_T0					(273+25)//Kelvin
 
 #define CAN_RX					PB8
 #define CAN_TX					PB9
-#define CAN_SHDN				PB7
+#define CAN_SHDN				PC13
 
 #define SWDIO					PA13
 #define SWCLK					PA14
 
-#define I2C2SCL_TX1				PA9
+#define I2C2SCL					PA9
 #define I2C2SDA					PA8
-#define RX1						PA10
 
-#define PWM						I2C2SDA		//Legacy PWM input for compat with BG431B-ESC1
-#define USART_TX				I2C2SCL_TX1
-#define USART_RX				RX1
+#define USART_TX				PB6
+#define USART_RX				PB7
 
-#define SPARE1					PC2
-#define SPARE2					PA0
-#define SPARE3					PC3
+#define SPARE1					PC15
+#define SPARE2					PC3
+#define SPARE3					PA0
 
 #define HALL1					SPARE1
 #define HALL2					SPARE2
@@ -213,11 +210,9 @@
 #define ENCODER_B				SPARE3
 #define ENCODER_Z				SPARE2
 
-#define USBCPD_CC1				PB4
-#define USBCPD_CC2				PB6
 
 // On-board LED pin number
-#define LED_RED					PC13
+#define LED_RED					PC14
 #ifndef LED_BUILTIN
 	#define LED_BUILTIN				LED_RED
 #endif
