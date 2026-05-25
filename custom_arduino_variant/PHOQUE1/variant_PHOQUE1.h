@@ -161,23 +161,24 @@
 #define PIN_I2C_GD_SCL			PC8		//I2C3 connected to Gate driver
 #define PIN_I2C_GD_SDA			PC9		//I2C3 connected to Gate driver
 
-#define A_VBUS					PC0		//Pin to sense supply voltage
+#define A_VBUS					PC1		//Pin to sense supply voltage. Also input of COMP3
+#define BRAKE_RESISTOR			PC2		//Brake resistor. Also output of COMP3
 
 #define VBUS_MUL_FACTOR			23		//Multiply the adc voltage read by this value to get the supply voltage
 
-#define A_GPIO_BEMF				PA4		//Pin to pull Back-emf high or low
+#define A_GPIO_BEMF				PA10	//Pin to pull Back-emf high or low
 
-#define A_CURR1_H				PA1		//CS1 connected to phase W and opamp1
-#define A_CURR1_L				PA3
-#define A_BEMF1					PA2
+#define A_CURRW_H				PA1		//phase W and opamp1
+#define A_CURRW_L				PA3
+#define A_BEMFW					PA2
 
-#define A_CURR2_H				PA7		//CS2 connected to phase V and opamp 2
-#define A_CURR2_L				PA5
-#define A_BEMF2					PA6
+#define A_CURRU_H				PA7		//phase U and opamp 2
+#define A_CURRU_L				PA5
+#define A_BEMFU					PA0
 
-#define A_CURR3_H				PB0		//CS3 connected to phase U and opamp 3
-#define A_CURR3_L				PB2
-#define A_BEMF3					PC4
+#define A_CURRV_H				PB0		//phase V and opamp 3
+#define A_CURRV_L				PB2
+#define A_BEMFV					PC4
 
 #define A_POTENTIOMETER			PC0
 #define A_TEMPERATURE			PC5
@@ -187,7 +188,7 @@
 
 #define CAN_RX					PB8
 #define CAN_TX					PB9
-#define CAN_SHDN				PC13
+#define CAN_PWR					PC13 //Take pin high to power on CAN transceiver
 
 #define SWDIO					PA13
 #define SWCLK					PA14
@@ -198,27 +199,23 @@
 #define USART_TX				PB6
 #define USART_RX				PB7
 
-#define SPARE1					PC15
-#define SPARE2					PC3
-#define SPARE3					PA0
+#define ENCODER_A				PA6
+#define ENCODER_B				PA4
+#define ENCODER_Z				PC3
 
-#define HALL1					SPARE1
-#define HALL2					SPARE2
-#define HALL3					SPARE3
-
-#define ENCODER_A				SPARE1
-#define ENCODER_B				SPARE3
-#define ENCODER_Z				SPARE2
+#define HALL1					ENCODER_A
+#define HALL2					ENCODER_B
+#define HALL3					ENCODER_Z
 
 
 // On-board LED pin number
-#define LED_RED					PC14
+#define LED_RED					PA15
 #ifndef LED_BUILTIN
 	#define LED_BUILTIN				LED_RED
 #endif
 
 #define PIN_PWM_MAG_ANGLE
-#define PIN_SS_MAG_ANGLE		PA15
+#define PIN_SS_MAG_ANGLE		PD2
 
 // SPI definitions
 #ifndef PIN_SPI_SS
@@ -237,7 +234,7 @@
 	#define PIN_SPI_MOSI			PB5
 #endif
 #ifndef PIN_SPI_MISO
-	#define PIN_SPI_MISO			PA6
+	#define PIN_SPI_MISO			PB4
 #endif
 #ifndef PIN_SPI_SCK
 	#define PIN_SPI_SCK				PB3
@@ -248,7 +245,7 @@
 	#define PIN_WIRE_SDA			I2C2SDA
 #endif
 #ifndef PIN_WIRE_SCL
-	#define PIN_WIRE_SCL			I2C2SCL_TX1
+	#define PIN_WIRE_SCL			I2C2SCL
 #endif
 
 // Timer Definitions
