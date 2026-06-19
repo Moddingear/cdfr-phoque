@@ -7,12 +7,10 @@
 #include <utilities/stm32math/STM32G4CORDICTrigFunctions.h>
 #ifdef ARDUINO_PHOQUE1
 #include <drivers/stspin32g4/STSPIN32G4.h>
-#include <encoders/sc60228/MagneticSensorSC60228.h>
-#include <current_sense/LowsideCurrentSense.h>
+#include <current_sense/phoque1/Phoque1_CurrentSense.hpp>
 #endif
 #if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
 #include <drivers/drv832x/drv832x.h>
-#include <encoders/sc60228/MagneticSensorSC60228.h>
 #if defined(ARDUINO_PHOQUE2)
 #include <current_sense/phoque2/Phoque2_CurrentSense.hpp>
 #endif
@@ -20,31 +18,70 @@
 #include <current_sense/phoque2a/Phoque2a_CurrentSense.hpp>
 #endif
 #endif
+#if defined(ARDUINO_PHOQUE)
+#if BRAKE_EN
+#include <brake/phoque/phoque_brake.hpp>
+#endif
+#include <encoders/sc60228/MagneticSensorSC60228.h>
+#include <AsyncSensor.hpp>
+#include <stm32g4xx_ll_spi.h>
+#endif
+#if __has_include("sTune.h")
+#define HAS_STUNE
+#include "sTune.h"
+#endif
+
+#include <current_sense/hardware_specific/stm32/stm32_mcu.h>
+#include <stm32g4xx_hal.h>
 
 #include <math.hpp>
 
-#define FIND_PP 0
+#ifdef ARDUINO_PHOQUE2A
+#define D4215
+#endif
 
+#ifndef D4215
 #define POLE_PAIRS 7
 #define KV 120
-#define PHASE_RESISTANCE 0.1//(172e-3)
-#define PHASE_INDUCTANCE_Q 23e-6//(110e-6)
-#define PHASE_INDUCTANCE_D 17e-6//(90e-6)
-#define HALL_SENSOR 0
-#define MAX_CURRENT 2
+#define PHASE_RESISTANCE (172e-3)
+#define PHASE_INDUCTANCE_Q (110e-6)
+#define PHASE_INDUCTANCE_D (90e-6)
+#define MAX_CURRENT 5
 #define MAX_VOLTAGE 20
 #define MIN_VOLTAGE 8
-#define REARM_VOLTAGE 10
+#else
+#define POLE_PAIRS 7
+#define KV 650
+#define PHASE_RESISTANCE 0.1
+#define PHASE_INDUCTANCE_Q 23e-6
+#define PHASE_INDUCTANCE_D 17e-6
+#define MAX_CURRENT 5
+#define MAX_VOLTAGE 20
+#define MIN_VOLTAGE 8
+//#define REARM_VOLTAGE 10
+#endif
 
 #define RTL 0
+#define RTL_ASYNC 0 //Use another timer for the real time loop
+
+#ifdef ARDUINO_PHOQUE2A
+#define DEBUG_PINA J7_RX
+#define DEBUG_PINB J7_TX
+#define DEBUG_PINC I2C_SCL
+#endif
+#ifdef ARDUINO_PHOQUE1
+#define DEBUG_PINA ENCODER_A
+#define DEBUG_PINB ENCODER_B
+#define DEBUG_PINC ENCODER_Z
+#endif
 
 //Phase inductance : dt/ln(V0/V1)*R
 
 // Motor instance
-BLDCMotor motor(FIND_PP ? 1 : POLE_PAIRS, PHASE_RESISTANCE, KV, PHASE_INDUCTANCE_Q, PHASE_INDUCTANCE_D);
+BLDCMotor motor(POLE_PAIRS, PHASE_RESISTANCE, KV, PHASE_INDUCTANCE_Q, PHASE_INDUCTANCE_D);
 #ifdef ARDUINO_PHOQUE1
 STSPIN32G4 driver;
-LowsideCurrentSense current_sensor(-(1.714*4.f), -1, -2, -3);
+Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shunt(), 16.f);
 #endif
 #if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
 DRV832xDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL, PIN_SS_DRIVER, NOT_SET, NOT_SET, 8000000);
@@ -52,9 +89,27 @@ Phoque2a_CurrentSense current_sensor(3e-3f, 40.f);
 #endif
 
 #if defined(ARDUINO_PHOQUE)
-SPIClass magspi(PIN_SPI_MOSI, PIN_SPI_MISO, PIN_SPI_SCK);
+#ifdef ASYNC_SENSOR
+float SC60228_decoder(uint16_t data)
+{
+	SC60228Angle cast;
+	cast.reg = data;
+	if (cast.df1 != 1 || cast.df2 != 1 || cast.err == 1)
+	{
+		return -1;
+	}
+	
+	return (cast.angle/(float)SC60228_CPR)*_2PI;
+}
+AsyncSensor position_sensor(SC60228_decoder, PIN_SS_MAG_ANGLE, SC60228SPISettings);
+#else
 MagneticSensorSC60228 position_sensor(PIN_SS_MAG_ANGLE);
 #endif
+#if BRAKE_EN
+phoque_brake brake;
+#endif
+#endif
+
 
 #if COMMANDER
 Commander commander(Serial);
@@ -66,55 +121,100 @@ void OnMotor(char* cmd)
 
 #endif
 
+#ifdef HAS_STUNE
+float stune_output;
+sTune tuner(&motor.target, &stune_output, tuner.NoOvershoot_PID, tuner.directIP, tuner.printALL);
+
+#endif
+
 bool foc_setup = false;
 
-constexpr float Ntc2TempV(float ADCVoltage)
+//#define LOGF_CORDIC
+
+#ifdef LOGF_CORDIC
+#include <stm32g4xx_ll_cordic.h>
+#include "arm_math.h"
+
+uint32_t configure_logf()
+{
+	LL_CORDIC_Config(CORDIC, LL_CORDIC_FUNCTION_NATURALLOG, LL_CORDIC_PRECISION_6CYCLES, LL_CORDIC_SCALE_0, LL_CORDIC_NBWRITE_1, LL_CORDIC_NBREAD_1, LL_CORDIC_INSIZE_32BITS, LL_CORDIC_OUTSIZE_32BITS);
+	return CORDIC->CSR;
+}
+
+float _logf(float value)
+{
+	uint32_t csr_before = CORDIC->CSR;
+	static uint32_t csr_logf = configure_logf();
+	uint8_t scale;
+	if (value < 3)
+	{
+		scale = value < 1 ? 1:2;
+	}
+	else
+	{
+		scale = value < 7 ? 3:4;
+	}
+	
+	CORDIC->CSR = csr_logf | (scale << CORDIC_CSR_SCALE_Pos);
+	CORDIC->WDATA = (q31_t)((value) * 0x80000000 / (1<<scale));
+	q31_t out_log = (int32_t)CORDIC->RDATA;
+	CORDIC->CSR = csr_before;
+	return (float)out_log * (1<<(scale+1)) / 0x80000000;
+}
+
+float Ntc2TempV(uint16_t ADCReading)
 {
 	// Formula: https://www.giangrandi.org/electronics/ntc/ntc.shtml
 	#if defined(ARDUINO_PHOQUE)
 	//B = ln(R/R0)/(1/T-1/T0)
 	//V = R/(R+R0)*3.3
 	//thus
-	float alpha = ADCVoltage/(3.3f-ADCVoltage); // R/R0
-	float T = 1.f/(logf(alpha)/NTC_B_CONSTANT + 1.f/NTC_T0);
+	float alpha = ADCReading/(4095.f-ADCReading); // R/R0
+	float T = 1.f/(_logf(alpha)/NTC_B_CONSTANT + 1.f/NTC_T0);
 	return T-273.15f;
 	#endif
 }
+#endif
 
-float FOC::get_temperature()
+int FOC::get_temperature()
 {
-	float temp_raw;
+	#ifdef LOGF_CORDIC
 	if (current_sensor.initialized)
 	{
-		#if defined(ARDUINO_PHOQUE)
-		temp_raw = current_sensor.readMillivolt(A_TEMPERATURE);
-		#else
-		temp_raw = _readADCVoltageLowSide(A_TEMPERATURE, current_sensor.params);
-		#endif
+		return Ntc2TempV(current_sensor.readRaw(A_TEMPERATURE));
 	}
 	else
 	{
-		temp_raw = analogRead(A_TEMPERATURE) * (3.3f) / ((1<<12)-1);
+		return Ntc2TempV(analogRead(A_TEMPERATURE));
 	}
-	
-	
-	return Ntc2TempV(temp_raw);
+	#else
+	if (current_sensor.initialized)
+	{
+		return current_sensor.read_temperature();
+	}
+	else
+	{
+		return current_sensor.get_temperature(analogRead(A_TEMPERATURE));
+	}
+	#endif
 }
 
-constexpr float max_temp = 80, tt_start = 60; //degC
+constexpr int max_temp = 80, tt_start = 60; //degC
 
-constexpr float get_max_current(float temp)
+constexpr float get_thermal_throttle_ratio(int temp)
 {
 	float delta = inverse_lerp<float>(temp, tt_start, max_temp);
-	delta=std::clamp<float>(delta, 0, 1);
-	return lerp<float>(delta, MAX_CURRENT, 0.1);
+	return std::clamp<float>(delta, 0, 1);
 }
 
-constexpr float get_max_voltage(float temp)
+constexpr float get_max_current(float thermal_throttle)
 {
-	float delta = inverse_lerp<float>(temp, tt_start, max_temp);
-	delta=std::clamp<float>(delta, 0, 1);
-	return lerp<float>(delta, MAX_VOLTAGE, 0.1);
+	return lerp<float>(thermal_throttle, MAX_CURRENT, 0.1);
+}
+
+constexpr float get_max_voltage(float thermal_throttle)
+{
+	return lerp<float>(thermal_throttle, MAX_VOLTAGE, 0.1);
 }
 
 float FOC::get_vbus()
@@ -138,15 +238,14 @@ float FOC::get_vbus()
 	#endif
 }
 
-void update_vbus()
+void update_vbus(int temperature)
 {
 	auto &vbus = driver.voltage_power_supply;
 
 	vbus = FOC::get_vbus();
-	auto temperature = FOC::get_temperature();
-	auto current_limit = get_max_current(temperature);
-	motor.voltage_limit = min(min(get_max_voltage(temperature), vbus/2), motor.phase_resistance*current_limit*2);
-	motor.current_limit = current_limit;
+	float thermal_throttle = get_thermal_throttle_ratio(temperature);
+	motor.voltage_limit = min(get_max_voltage(thermal_throttle), vbus/2);
+	motor.current_limit = get_max_current(thermal_throttle);
 	motor.PID_current_q.limit = motor.voltage_limit;
 	motor.PID_current_d.limit = motor.voltage_limit;
 }
@@ -156,7 +255,7 @@ void param_foc()
 	// driver config
 	// power supply voltage [V]
 	driver.voltage_power_supply = 20;
-	driver.pwm_frequency = 22000;
+	driver.pwm_frequency = 20000;
 	//driver.voltage_limit = 4;
 
 	motor.voltage_sensor_align = 4*PHASE_RESISTANCE;
@@ -164,7 +263,11 @@ void param_foc()
 	// choose FOC modulation (optional)
 	motor.foc_modulation = FOCModulationType::SpaceVectorPWM;
 
-	motor.torque_controller = TorqueControlType::voltage;
+	#ifdef D4215
+	motor.torque_controller = TorqueControlType::estimated_current;
+	#else
+	motor.torque_controller = TorqueControlType::estimated_current;
+	#endif
 
 	// set motion control loop to be used
 	motor.controller = MotionControlType::angle_nocascade;
@@ -202,38 +305,9 @@ void param_find_pole_pairs()
 
 void init_sensors()
 {
-	pinMode(I2C_SCL, OUTPUT);
-	digitalWrite(I2C_SCL, HIGH);
 	Serial.printf("Starting driver init\n");
 	driver.init();
-	#if defined(ARDUINO_PHOQUE1) && 0
-	//change gate drive voltage
-	driver.unlock();
-	auto powmng = driver.getPowMngRegister();
-	powmng.vcc_val = 0b10;
-	driver.setPowMngRegister(powmng);
-	driver.lock();
-	#endif
-	#if defined(ARDUINO_PHOQUE1) && 0
-	//change fault register to not care about vds protection
-	driver.unlock();
-	STSPIN32G4NFault faultreg;
-	faultreg.reg = 3;
-	driver.setNFaultRegister(faultreg);
-	driver.lock();
-	#endif
-	//digitalWrite(PE7, HIGH);
-	//driver.clearFaults();
-	#if defined(ARDUINO_PHOQUE1)
-	Serial.printf("Starting position sensor init\n");
-	position_sensor.init(&magspi);
-	#else
-	position_sensor.init();
-	#endif
-	#if HALL_SENSOR
-	position_sensor.enableInterrupts(doA, doB, doC); //only for hall
-	#else
-	#endif
+
 	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
 	driver.setRegistersLocked(false);
 	driver.setCurrentSenseGain(CSAGain_40);
@@ -242,8 +316,37 @@ void init_sensors()
 	driver.setLowSideChargeCurrent(IDRIVEP_1000mA);
 	driver.setLowSideDischargeCurrent(IDRIVEN_2000mA);
 	driver.setDriveTime(TDRIVE_4000ns);
-	
 	#endif
+
+	#if defined(TIM1_DEBUG)
+	HAL_NVIC_SetPriority(TIM1_CC_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(TIM1_CC_IRQn);
+	LL_TIM_EnableIT_CC4(TIM1);
+	pinMode(I2C_SCL, OUTPUT);
+	#endif
+
+	#if defined(TIM1_DEBUG) || defined(ASYNC_SENSOR)
+	HAL_NVIC_SetPriority(TIM1_UP_TIM16_IRQn, 1, 0);
+    HAL_NVIC_EnableIRQ(TIM1_UP_TIM16_IRQn);
+	LL_TIM_EnableIT_UPDATE(TIM1);
+	#endif
+
+	#if defined(ARDUINO_PHOQUE1) && 0
+	//change fault register to not care about vds protection
+	driver.unlock();
+	STSPIN32G4NFault faultreg;
+	faultreg.reg = 3;
+	driver.setNFaultRegister(faultreg);
+	driver.lock();
+	#endif
+	
+	#ifdef ASYNC_SENSOR
+	SPI.getHandle()->Instance->CR2 &= ~(SPI_CR2_ERRIE | SPI_CR2_RXNEIE | SPI_CR2_TXEIE); //disable all interrupts
+	HAL_NVIC_SetPriority(SPI1_IRQn, 2, 0);
+	HAL_NVIC_EnableIRQ(SPI1_IRQn);
+	#endif
+	Serial.printf("Starting position sensor init\n");
+	position_sensor.init();
 	// link position sensor
 	motor.linkSensor(&position_sensor);
 
@@ -255,74 +358,18 @@ void init_sensors()
 	current_sensor.init();
 	motor.linkCurrentSense(&current_sensor);
 
-	update_vbus();
 
-	Serial.printf("Updated VBUS to %f, temp is %f\n", driver.voltage_power_supply, FOC::get_temperature());
-}
+	#ifdef PHOQUE_DEBUG_SAMPLING
+	HAL_NVIC_SetPriority(ADC1_2_IRQn, 1, 1);
+	pinMode(DEBUG_PINA, OUTPUT);
+	pinMode(DEBUG_PINB, OUTPUT);
+	HAL_NVIC_EnableIRQ(ADC1_2_IRQn);
+	#endif
+	
+	auto temperature = FOC::get_temperature();
+	update_vbus(temperature);
 
-int find_pole_pairs()
-{
-	// pole pairs calculation routine
-	Serial.println("Pole pairs (PP) estimator");
-	Serial.println("-\n");
-
-	float pp_search_voltage = 1; // maximum power_supply_voltage/2
-	float pp_search_angle = 20*_PI; // search electrical angle to turn
-
-	// move motor to the electrical angle 0
-	motor.controller = MotionControlType::angle_openloop;
-	motor.voltage_limit=pp_search_voltage;
-	motor.move(0);
-	_delay(1000);
-	// read the sensor angle
-	position_sensor.update();
-	float angle_begin = position_sensor.getAngle();
-	_delay(50);
-
-	// move the motor slowly to the electrical angle pp_search_angle
-	float motor_angle = 0;
-	while(motor_angle <= pp_search_angle){
-		motor_angle += 0.01f;
-		position_sensor.update(); // keep track of the overflow
-		motor.move(motor_angle);
-		_delay(1);
-	}
-	_delay(1000);
-	// read the sensor value for 180
-	position_sensor.update(); 
-	float angle_end = position_sensor.getAngle();
-	_delay(50);
-	// turn off the motor
-	motor.move(0);
-	_delay(1000);
-
-	// calculate the pole pair number
-	int pp = round((pp_search_angle)/(angle_end-angle_begin));
-
-	Serial.print(F("Estimated PP : "));
-	Serial.println(pp);
-	Serial.println(F("PP = Electrical angle / Encoder angle "));
-	Serial.print(pp_search_angle*180/_PI);
-	Serial.print(F("/"));
-	Serial.print((angle_end-angle_begin)*180/_PI);
-	Serial.print(F(" = "));
-	Serial.println((pp_search_angle)/(angle_end-angle_begin));
-	Serial.println();
-
-
-	// a bit of monitoring the result
-	if(pp <= 0 ){
-		Serial.println(F("PP number cannot be negative"));
-		Serial.println(F(" - Try changing the search_voltage value or motor/sensor configuration."));
-	}else if(pp > 30){
-		Serial.println(F("PP number very high, possible error."));
-	}else{
-		Serial.println(F("If PP is estimated well your motor should turn now!"));
-		Serial.println(F(" - If it is not moving try to relaunch the program!"));
-		Serial.println(F(" - You can also try to adjust the target voltage using serial terminal!"));
-	}
-	motor.disable();
-	return pp;
+	Serial.printf("Updated VBUS to %f, temp is %d\n", driver.voltage_power_supply, temperature);
 }
 
 void OnFault()
@@ -340,34 +387,32 @@ void FOC::setup()
 	{
 		return;
 	}
+	#ifdef HAL_CORDIC_MODULE_ENABLED
     SimpleFOC_CORDIC_Config(); 
+	#endif
+	#if BRAKE_EN
+	brake.init(30);
+	#endif
 	
 	// enable more verbose output for debugging
 	// comment out if not needed
+	#ifndef SIMPLEFOC_DISABLE_DEBUG
 	SimpleFOCDebug::enable(&Serial);
-	#if FIND_PP
-	param_find_pole_pairs();
-	#else
+	#endif
 	param_foc();
 	Serial.printf("param_foc OK\n");
-	#endif
 	init_sensors();
 	Serial.printf("init_sensors OK\n");
-	#if FIND_PP
-	auto pairs = find_pole_pairs();
-	#else
 	// initialize motor
 	motor.init();
 	Serial.printf("motor.init OK\n");
 	// init FOC
-	foc_setup = motor.initFOC();
-	Serial.printf("motor.initFOC %s\n", foc_setup ? "OK":"KO");
-	foc_setup = true;
-	#endif
+	bool initFOC_status = motor.initFOC();
+	Serial.printf("motor.initFOC %s\n", initFOC_status ? "OK":"KO");
 
-	motor.tuneCurrentController(5000);
-	motor.characteriseMotor(1);
-	motor.tuneCurrentController(5000);
+	//motor.tuneCurrentController(5000);
+	//motor.characteriseMotor(motor.voltage_sensor_align);
+	//motor.tuneCurrentController(5000);
 
 	Serial.printf("Motor ready. Deadzone %f\n", driver.dead_zone);
 	
@@ -392,16 +437,10 @@ void FOC::setup()
 	pinMode(PIN_NFAULT, INPUT);
 	#endif
 
-	#if RTL
-	HardwareTimer* timer = new HardwareTimer(TIM4);
-	//auto driver_params = reinterpret_cast<STM32DriverParams*>(driver.params);
-	timer->setOverflow(driver.pwm_frequency, HERTZ_FORMAT); 
-	// add the loopFOC and move to the timer
-	timer->attachInterrupt(&FOC::RealTimeLoop);
-	timer->setInterruptPriority(1, 0);
-	// start the timer
-	timer->resume();
-	#endif
+	pinMode(DEBUG_PINA, OUTPUT);
+	pinMode(DEBUG_PINB, OUTPUT);
+	delay(1);
+	foc_setup = true;
 
 }
 
@@ -414,8 +453,12 @@ float rtl_dt;
 
 void FOC::RealTimeLoop()
 {
+	//digitalWriteFast(digitalPinToPinName(DEBUG_PINB), HIGH);
 	motor.move();
+	//digitalWriteFast(digitalPinToPinName(DEBUG_PINB), LOW);
+	digitalWriteFast(digitalPinToPinName(DEBUG_PINA), HIGH);
 	motor.loopFOC();
+	digitalWriteFast(digitalPinToPinName(DEBUG_PINA), LOW);
 
 	#if 0
 	static float last_shaft_angle = motor.shaftAngle();
@@ -439,31 +482,21 @@ void FOC::RealTimeLoop()
 	#endif
 }
 
-PhaseCurrent_s currents;
-DQCurrent_s dqcurr;
-
 void FOC::loop()
 {
-	static int i = 0;
-	static auto i0 = millis();
-	if (!FOC::IsSetup())
+	if (!FOC::IsSetup()) [[unlikely]]
 	{
 		return;
 	}
-	currents = current_sensor.getPhaseCurrents();
-	dqcurr = current_sensor.getFOCCurrents(motor.electricalAngle());
-	auto temp = get_temperature();
-	#if 1
-    update_vbus();
-	#endif
+	static int i = 0;
+	static auto i0 = millis();
+	auto temp = get_temperature();//1.8us
+    update_vbus(temp);//2.25us
 
-	bool motor_fault = false;
+	bool motor_fault = false;//0.7us
 
-
-	
-	
-
-	if (digitalRead(PIN_NFAULT) == LOW && motor.enabled)
+	//Driver error
+	if (digitalReadFast(digitalPinToPinName(PIN_NFAULT)) == LOW) [[unlikely]]
 	{
 		motor_fault = true;
 		if (motor.enabled)
@@ -471,8 +504,8 @@ void FOC::loop()
 			Serial.printf("Driver reported a fault, disabling\n");
 		}
 	}
-
-	if (temp > max_temp && motor.enabled)
+	//Over temperature safety
+	if (temp > max_temp) [[unlikely]]
 	{
 		motor_fault = true;
 		if (motor.enabled)
@@ -480,8 +513,8 @@ void FOC::loop()
 			Serial.printf("Over temp! %f\n", temp);
 		}
 	}
-
-	if (get_vbus() < MIN_VOLTAGE && motor.enabled)
+	//Undervoltage lockout
+	if (driver.voltage_power_supply < MIN_VOLTAGE) [[unlikely]]
 	{
 		motor_fault = true;
 		if (motor.enabled)
@@ -489,8 +522,10 @@ void FOC::loop()
 			Serial.printf("Voltage too low, disabling\n");
 		}
 	}
+	
+	
 
-	if (motor_fault)
+	if (motor_fault) [[unlikely]]
 	{
 		if (motor.enabled)
 		{
@@ -499,14 +534,14 @@ void FOC::loop()
 	}
 	else
 	{
-		if (get_vbus() > REARM_VOLTAGE && !motor.enabled)
+		#ifdef REARM_VOLTAGE
+		if (driver.voltage_power_supply > REARM_VOLTAGE && !motor.enabled)
 		{
 			motor.enable();
 		}
+		#endif
 	}
 	
-	
-
 	#if RTL
 	if (rtl_dt > 2.f/driver.pwm_frequency)
 	{
@@ -514,21 +549,7 @@ void FOC::loop()
 		rtl_dt = 0;
 	}
 	#endif
-
-	#ifdef ARDUINO_PHOQUE1
-	static bool last_enabled = true;
-	if (!motor.enabled && motor.enabled != last_enabled)
-	{
-		Serial.printf("Enabling low sides\n");
-		driver.setPhaseState(PHASE_ON, PHASE_ON, PHASE_ON);
-		driver.setPwm(0,0,0);
-		driver.clearFaults();
-	}
-	last_enabled = motor.enabled;
-	#endif
 	
-	
-
 	#if defined(ARDUINO_PHOQUE1)
 	static auto lastPrint = millis();
 	if (millis() - lastPrint > 1000 && !motor.enabled)
@@ -543,7 +564,7 @@ void FOC::loop()
 	}
 	#endif
 
-	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
+	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a) && 0
 	static auto lastPrint = millis();
 	if (millis() - lastPrint > 1000)
 	{
@@ -641,15 +662,23 @@ void FOC::loop()
 #endif
 
 	#if COMMANDER
+	digitalWriteFast(digitalPinToPinName(DEBUG_PINA), HIGH);
 	motor.monitor();
 	commander.run();
+	digitalWriteFast(digitalPinToPinName(DEBUG_PINA), LOW);
 	#endif
     
 	// main FOC algorithm function
 	#if !RTL
+	#if ASYNC_SENSOR
+	/*if (position_sensor.has_new_data())
+	{
+		RealTimeLoop();
+	}*/
+	#else
 	RealTimeLoop();
-
-	#if 1
+	#endif
+	#if 0
 	if (millis() - i0 > 10000)
 	{
 		auto time_now = millis();
@@ -746,4 +775,82 @@ void FOC::tune_settings(const RobotCAN::PIDTunePacket *message)
 	default:
 		break;
 	}
+}
+
+extern "C" {
+	#if defined(TIM1_DEBUG) || defined(ASYNC_SENSOR)
+	void TIM1_UP_TIM16_IRQHandler()
+	{
+		if (LL_TIM_IsActiveFlag_UPDATE(TIM1))
+		{
+			#ifdef ASYNC_SENSOR
+			position_sensor.start_capture();
+			#endif
+			#ifdef TIM1_DEBUG
+			HAL_GPIO_WritePin(digitalPinToPort(DEBUG_PINC), digitalPinToBitMask(DEBUG_PINC), GPIO_PIN_RESET);
+			#endif
+			LL_TIM_ClearFlag_UPDATE(TIM1);
+			
+		}
+	}
+	#endif
+
+	#ifdef TIM1_DEBUG
+	void TIM1_CC_IRQHandler()
+	{
+		if (LL_TIM_IsActiveFlag_CC4(TIM1))
+		{
+			HAL_GPIO_WritePin(digitalPinToPort(DEBUG_PINC), digitalPinToBitMask(DEBUG_PINC), GPIO_PIN_SET);
+			LL_TIM_ClearFlag_CC4(TIM1);
+		}
+	}
+	#endif
+
+	#ifdef PHOQUE_DEBUG_SAMPLING
+	void ADC1_2_IRQHandler()
+	{
+		auto adc1_isr = ADC1->ISR;
+		if (adc1_isr)
+		{
+			if (adc1_isr & ADC_ISR_EOSMP)
+			{
+				HAL_GPIO_WritePin(digitalPinToPort(DEBUG_PINA), digitalPinToBitMask(DEBUG_PINA), GPIO_PIN_SET);
+			}
+			if (adc1_isr & ADC_ISR_EOS)
+			{
+				HAL_GPIO_WritePin(digitalPinToPort(DEBUG_PINA), digitalPinToBitMask(DEBUG_PINA), GPIO_PIN_RESET);
+			}
+			
+			ADC1->ISR = adc1_isr;
+		}
+		auto adc2_isr = ADC2->ISR;
+		if (adc2_isr)
+		{
+			if (adc2_isr & ADC_ISR_EOSMP)
+			{
+				HAL_GPIO_WritePin(digitalPinToPort(DEBUG_PINB), digitalPinToBitMask(DEBUG_PINB), GPIO_PIN_SET);
+			}
+			if (adc2_isr & ADC_ISR_EOS)
+			{
+				HAL_GPIO_WritePin(digitalPinToPort(DEBUG_PINB), digitalPinToBitMask(DEBUG_PINB), GPIO_PIN_RESET);
+			}
+			ADC2->ISR = adc2_isr;
+		}
+	}
+	#endif
+
+	#ifdef ASYNC_SENSOR
+	void SPI1_IRQHandler()
+	{
+		SPI_TypeDef *instance = position_sensor.spi->getHandle()->Instance;
+		if (LL_SPI_IsActiveFlag_RXNE(instance))
+		{
+			position_sensor.end_capture();
+			if (FOC::IsSetup())
+			{
+				FOC::RealTimeLoop();
+			}
+		}
+	}
+	#endif
 }

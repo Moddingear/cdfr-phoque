@@ -40,7 +40,7 @@ extern "C" {
 #define HAL_CORTEX_MODULE_ENABLED
 //#define HAL_CRC_MODULE_ENABLED
 //#define HAL_CRYP_MODULE_ENABLED
-//#define HAL_DAC_MODULE_ENABLED
+#define HAL_DAC_MODULE_ENABLED
 #define HAL_DMA_MODULE_ENABLED
 #define HAL_EXTI_MODULE_ENABLED
 #define HAL_FDCAN_MODULE_ENABLED
@@ -181,7 +181,7 @@ The real value may vary depending on the variations in voltage and temperature.*
 #define  VDD_VALUE                    (3300UL) /*!< Value of VDD in mv */
 #define  TICK_INT_PRIORITY            (0x0FUL) /*!< tick interrupt priority */
 #define  USE_RTOS                     0U
-#define  PREFETCH_ENABLE              0U
+#define  PREFETCH_ENABLE              1U
 #define  INSTRUCTION_CACHE_ENABLE     1U
 #define  DATA_CACHE_ENABLE            1U
 
@@ -199,7 +199,7 @@ The real value may vary depending on the variations in voltage and temperature.*
  * Deactivated: CRC code cleaned from driver
  */
 
-#define USE_SPI_CRC                   1U
+#define USE_SPI_CRC                   0U
 
 /* Includes ------------------------------------------------------------------*/
 /**

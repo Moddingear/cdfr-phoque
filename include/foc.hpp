@@ -14,7 +14,7 @@ namespace FOC
 	void set_target(float target);
 	void set_motion_mode(MotionControlType type);
 	float get_angle();
-	float get_temperature();
+	int get_temperature();
 	float get_current();
 	float get_vbus();
 

@@ -25,7 +25,7 @@ void (*FOCFunctiontoRun)(void) = nullptr;
 
 #if SIMPLECANLIB
 SimpleCan* CanInstance;
-#if 0
+#if !DEMO
 FilterDefinition filter[] ={
 { //accept only us
 	.FilterIndex = 0,
@@ -58,7 +58,7 @@ FilterDefinition filter[] ={
 #endif
 
 uint32_t can_identifier = 0;
-#if 0
+#if !DEMO
 void SendError(RobotCAN::Error_packet::errors error)
 {
 	RobotCAN::Error_packet message;
@@ -82,7 +82,7 @@ void SendHello()
 #if SIMPLECANLIB
 void OnReceive(const SimpleCanRxHeader rxHeader, const uint8_t *rxData, void* userData)
 {
-	#if 0
+	#if !DEMO
 	if (rxHeader.DataLength < 1)
 	{
 		Serial.printf("Message too short, ignored (ID %d, length %d)\n", rxHeader.Identifier, rxHeader.DataLength);
@@ -229,7 +229,7 @@ void OnReceive(const SimpleCanRxHeader rxHeader, const uint8_t *rxData, void* us
 	#endif
 }
 
-#if 0
+#if !DEMO
 bool FilterFunc(int CanID)
 {
 	return CanID == can_identifier;
@@ -269,7 +269,7 @@ void setup()
 	{
 		can_identifier = RobotCAN::master_address_high_priority+1;
 	}
-	#if SIMPLECANLIB && 0
+	#if SIMPLECANLIB && !DEMO
 	filter[0].FilterID1 = can_identifier;
 	filter[0].FilterID2 = 0x7ff;
 	#endif
@@ -309,7 +309,7 @@ void loop()
 {
 	static uint64_t last_feedback = millis();
 	bool led_status = (millis()%1000) > 500;
-	digitalWrite(LED_BUILTIN, led_status);
+	digitalWriteFast(digitalPinToPinName(LED_BUILTIN), led_status);
 	
 	#if SIMPLECANLIB
 	CanInstance->Loop();
@@ -325,6 +325,9 @@ void loop()
 		{
 			vbus_ok = 0;
 		}
+
+
+		Serial.printf("Temperature: %d (%d), VBUS %f\r\n", FOC::get_temperature(), analogRead(A_TEMPERATURE), FOC::get_vbus());
 		
 		if (vbus_ok > 10)
 		{
@@ -334,10 +337,11 @@ void loop()
 	}
 	#endif
 	FOC::loop();
+	#if 0
 	if (FOC::IsSetup() && last_feedback < millis())
 	{
 		last_feedback = millis();
-		#if 0
+		#if !DEMO
 		RobotCAN::Motor_feedback message;
 		message.angle = FOC::get_angle();
 		message.temperature = FOC::get_temperature()*2;
@@ -350,6 +354,7 @@ void loop()
 		CanInstance->SendMessage(reinterpret_cast<uint8_t*>(&angle), sizeof(angle), can_identifier);
 		#endif
 	}
+	#endif
 	#if 0
 	if (last_message_timestamp + 5000 < millis())
 	{

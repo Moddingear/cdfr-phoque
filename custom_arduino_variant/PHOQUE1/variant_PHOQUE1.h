@@ -163,12 +163,18 @@
 
 #define A_VBUS					PC1		//Pin to sense supply voltage. Also input of COMP3
 #define BRAKE_RESISTOR			PC2		//Brake resistor. Also output of COMP3
+#define BRAKE_AF				3		//Alternate function 3
+#define BRAKE_DAC				DAC1	//DAC 1 or 3
+#define BRAKE_DAC_CHAN			DAC_CHANNEL_1		//DAC Channel 1
+#define BRAKE_COMP				COMP3		//Use comparator 3
+#define BRAKE_COMP_PLUS			COMP_INPUT_PLUS_IO2
+#define BRAKE_COMP_MINUS		COMP_INPUT_MINUS_DAC1_CH1
 
 #define VBUS_MUL_FACTOR			23		//Multiply the adc voltage read by this value to get the supply voltage
 
 #define A_GPIO_BEMF				PA10	//Pin to pull Back-emf high or low
 
-#define A_CURRW_H				PA1		//phase W and opamp1
+#define A_CURRW_H				PA1		//phase W and opamp 1
 #define A_CURRW_L				PA3
 #define A_BEMFW					PA2
 
@@ -183,8 +189,8 @@
 #define A_POTENTIOMETER			PC0
 #define A_TEMPERATURE			PC5
 
-#define NTC_B_CONSTANT			3455	//B = ln(R/R0)/(1/T-1/T0)
-#define NTC_T0					(273+25)//Kelvin
+#define NTC_B_CONSTANT			4250	//B = ln(R/R0)/(1/T-1/T0)
+#define NTC_T0					(273.15f+25)//Kelvin
 
 #define CAN_RX					PB8
 #define CAN_TX					PB9
@@ -193,8 +199,8 @@
 #define SWDIO					PA13
 #define SWCLK					PA14
 
-#define I2C2SCL					PA9
-#define I2C2SDA					PA8
+#define I2C2_SCL				PA9
+#define I2C2_SDA				PA8
 
 #define USART_TX				PB6
 #define USART_RX				PB7
@@ -242,10 +248,10 @@
 
 // I2C definitions
 #ifndef PIN_WIRE_SDA
-	#define PIN_WIRE_SDA			I2C2SDA
+	#define PIN_WIRE_SDA			I2C2_SDA
 #endif
 #ifndef PIN_WIRE_SCL
-	#define PIN_WIRE_SCL			I2C2SCL
+	#define PIN_WIRE_SCL			I2C2_SCL
 #endif
 
 // Timer Definitions

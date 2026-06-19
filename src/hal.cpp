@@ -4,7 +4,7 @@
 
 
 
-void Error_Handler(void)
+extern "C" void Error_Handler(void)
 {
 	__disable_irq();
 	while (1)
@@ -12,35 +12,35 @@ void Error_Handler(void)
 	}
 }
 
-void NMI_Handler(void)
+extern "C" void NMI_Handler(void)
 {
 	while (1)
 	{
 	}
 }
 
-void HardFault_Handler(void)
+extern "C" void HardFault_Handler(void)
 {
 	while (1)
 	{
 	}
 }
 
-void MemManage_Handler(void)
+extern "C" void MemManage_Handler(void)
 {
 	while (1)
 	{
 	}
 }
 
-void BusFault_Handler(void)
+extern "C" void BusFault_Handler(void)
 {
 	while (1)
 	{
 	}
 }
 
-void UsageFault_Handler(void)
+extern "C" void UsageFault_Handler(void)
 {
 	while (1)
 	{
