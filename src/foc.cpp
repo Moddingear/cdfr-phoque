@@ -69,6 +69,11 @@
 #define DEBUG_PINB J7_TX
 #define DEBUG_PINC I2C_SCL
 #endif
+#ifdef ARDUINO_PHOQUE2
+#define DEBUG_PINA PIN_SERIAL_RX
+#define DEBUG_PINB PIN_SERIAL_TX
+#define DEBUG_PINC PIN_WIRE_SCL
+#endif
 #ifdef ARDUINO_PHOQUE1
 #define DEBUG_PINA ENCODER_A
 #define DEBUG_PINB ENCODER_B
@@ -81,11 +86,29 @@
 BLDCMotor motor(POLE_PAIRS, PHASE_RESISTANCE, KV, PHASE_INDUCTANCE_Q, PHASE_INDUCTANCE_D);
 #ifdef ARDUINO_PHOQUE1
 STSPIN32G4 driver;
-Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shunt(), 16.f);
+#define PHOQUE1r2
+#ifdef PHOQUE1r2
+#warning "Compiling for Phoque1r2"
+Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shunt(3e-3f, 1.5e3f, 22e3f, 2.2e3), 16.f);
+#else
+Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shunt(3e-3f, 1.5e3f, 100e3f), 32.f);
+#endif
 #endif
 #if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
-DRV832xDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL, PIN_SS_DRIVER, NOT_SET, NOT_SET, 8000000);
+DRV832xDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL, PIN_SS_DRIVER, NOT_SET, NOT_SET, 2000000);
+#if defined(ARDUINO_PHOQUE2)
+Phoque2_CurrentSense current_sensor(3e-3f, 40.f);
+#endif
+#if defined(ARDUINO_PHOQUE2a)
 Phoque2a_CurrentSense current_sensor(3e-3f, 40.f);
+#endif
+#endif
+
+#if defined(ARDUINO_PHOQUE2)
+SPIClass position_sensor_spi(PIN_MOSI_MAG_ANGLE, PIN_MISO_MAG_ANGLE, PIN_CLK_MAG_ANGLE);
+#define MAG_SPI (&position_sensor_spi)
+#else
+#define MAG_SPI (&SPI)
 #endif
 
 #if defined(ARDUINO_PHOQUE)
@@ -346,7 +369,9 @@ void init_sensors()
 	HAL_NVIC_EnableIRQ(SPI1_IRQn);
 	#endif
 	Serial.printf("Starting position sensor init\n");
-	position_sensor.init();
+	position_sensor.init(MAG_SPI);
+	pinmap_pinout(digitalPinToPinName(PIN_SPI_MOSI), PinMap_SPI_MOSI);
+	LL_GPIO_SetPinSpeed(GPIOD, LL_GPIO_PIN_2, LL_GPIO_SPEED_FREQ_LOW);
 	// link position sensor
 	motor.linkSensor(&position_sensor);
 
@@ -356,6 +381,7 @@ void init_sensors()
 	current_sensor.linkDriver(&driver);
 	Serial.printf("Starting current sensor init\n");
 	current_sensor.init();
+	//current_sensor.print_temperature_LUT();
 	motor.linkCurrentSense(&current_sensor);
 
 
@@ -564,14 +590,12 @@ void FOC::loop()
 	}
 	#endif
 
-	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a) && 0
+	#if (defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a))
 	static auto lastPrint = millis();
 	if (millis() - lastPrint > 1000)
 	{
 		lastPrint = millis();
-		digitalWrite(I2C_SCL, LOW);
 		auto status = driver.getStatus();
-		digitalWrite(I2C_SCL, HIGH);
 		if (status.isFault())
 		{
 			Serial.printf("Fault detected %d!\n", millis());

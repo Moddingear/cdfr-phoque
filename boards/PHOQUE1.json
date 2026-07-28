@@ -2,7 +2,7 @@
   "build": {
     "core": "stm32",
     "cpu": "cortex-m4",
-    "extra_flags": "-DSTM32G4xx -DSTM32G431xx -DARDUINO_PHOQUE -DARDUINO_PHOQUE1 -DARDUINO_GENERIC_G431VBTX -DHAL_OPAMP_MODULE_ENABLED -DSIMPLEFOC_HAL_OVERRIDE",
+    "extra_flags": "-DSTM32G4xx -DSTM32G431xx -DARDUINO_PHOQUE -DARDUINO_PHOQUE1 -DHAL_OPAMP_MODULE_ENABLED -DARDUINO_GENERIC_G431VBTX=\"ARDUINO_GENERIC_G431VBTX is for the stspin32 driver\"", 
     "f_cpu": "170000000L",
     "mcu": "stm32g431vbt6",
     "product_line": "STM32G431xx",
@@ -16,9 +16,6 @@
       "stlink"
     ],
     "jlink_device": "STM32G431VB",
-    "onboard_tools": [
-      "stlink"
-    ],
     "openocd_target": "stm32g4x",
     "svd_path": "STM32G431xx.svd"
   },
@@ -26,22 +23,22 @@
     "arduino",
     "cmsis",
     "libopencm3",
-    "stm32cube",
-    "zephyr"
+    "stm32cube"
   ],
   "name": "PHOQUE1 Brushless Driver",
   "upload": {
     "maximum_ram_size": 32768,
     "maximum_size": 129024,
-    "protocol": "stlink",
+    "protocol": "dfu",
     "protocols": [
       "stlink",
       "jlink",
       "cmsis-dap",
       "blackmagic",
-      "mbed"
+      "mbed",
+      "dfu"
     ]
   },
-  "url": "https://www.st.com/en/microcontrollers-microprocessors/stm32g431vb.html",
-  "vendor": "ST"
+  "url": "",
+  "vendor": ""
 }

@@ -47,7 +47,7 @@ extern "C" void UsageFault_Handler(void)
 	}
 }
 
-#if defined(ARDUINO_PHOQUE1)
+#if defined(ARDUINO_PHOQUE1) && 0
 extern "C" void SystemClock_Config(void)
 {
 	RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -107,7 +107,7 @@ extern "C" void SystemClock_Config(void)
 
 }
 #endif
-#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
+#if (defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)) && 0
 extern "C" void SystemClock_Config(void)
 {
 	RCC_OscInitTypeDef RCC_OscInitStruct = {0};

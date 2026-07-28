@@ -29,13 +29,15 @@
   "upload": {
     "maximum_ram_size": 32768,
     "maximum_size": 131072,
-    "protocol": "stlink",
+    "protocol": "dfu",
     "protocols": [
       "stlink",
       "jlink",
       "cmsis-dap",
       "blackmagic",
-      "mbed"
+      "mbed",
+      "dfu",
+      "serial"
     ]
   },
   "url": "https://www.st.com/en/microcontrollers-microprocessors/stm32g431cb.html",

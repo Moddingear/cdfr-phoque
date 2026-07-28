@@ -189,18 +189,25 @@
 #define A_POTENTIOMETER			PC0
 #define A_TEMPERATURE			PC5
 
-#define NTC_B_CONSTANT			4250	//B = ln(R/R0)/(1/T-1/T0)
-#define NTC_T0					(273.15f+25)//Kelvin
+#ifndef NTC_B_CONSTANT
+	#define NTC_B_CONSTANT			4250	//B = ln(R/R0)/(1/T-1/T0)
+#endif
+#ifndef NTC_T0
+	#define NTC_T0					(273.15f+25)//Kelvin
+#endif
+#ifndef NTC_DIVIDER_BALANCE
+	#define NTC_DIVIDER_BALANCE		(22.f/100.f) //R1 (value of the other resistance in the voltage divider) over R0 (resistance of NTC at T0)
+#endif
 
 #define CAN_RX					PB8
 #define CAN_TX					PB9
 #define CAN_PWR					PC13 //Take pin high to power on CAN transceiver
 
-#define SWDIO					PA13
-#define SWCLK					PA14
+#define SWDIO					PA13 //Serial wire debug I/O
+#define SWCLK					PA14 //Serial wire debug clock
 
-#define I2C2_SCL				PA9
-#define I2C2_SDA				PA8
+#define I2C2_SCL				PA9 //I2C clock on the QWIIC connector
+#define I2C2_SDA				PA8 //I2C data on the QWIIC connector
 
 #define USART_TX				PB6
 #define USART_RX				PB7

@@ -242,15 +242,23 @@ void setup()
 	// use monitoring with serial
 	Serial.begin(BAUD_RATE);
 
-	#if defined(ARDUINO_PHOQUE1) || defined(ARDUINO_PHOQUE2)
+	#if defined(ARDUINO_PHOQUE)
 	pinMode(BRAKE_RESISTOR, OUTPUT);
 	digitalWrite(BRAKE_RESISTOR, LOW);
 	#endif
 
+	analogReadResolution(12);
 	pinMode(LED_BUILTIN, OUTPUT);
 	pinMode(A_VBUS, INPUT_ANALOG);
+	pinMode(A_TEMPERATURE, INPUT_ANALOG);
 	pinMode(CAN_PWR, OUTPUT);
 	digitalWrite(CAN_PWR, HIGH);
+
+	while (FOC::get_temperature() > 80)
+	{
+		digitalWrite(LED_BUILTIN, HIGH);
+		Serial.printf("OVERTEMP: %d (%d), VBUS %f\r\n", FOC::get_temperature(), analogRead(A_TEMPERATURE), FOC::get_vbus());
+	}
 
 	for (size_t i = 0; i < 100; i++)
 	{
@@ -258,7 +266,6 @@ void setup()
 		digitalWrite(LED_BUILTIN, i & 1);
 	}
 
-	analogReadResolution(12);
 	potentiometer_value = analogRead(A_POTENTIOMETER);
 	can_identifier = potentiometer_value >>1;
 	if (can_identifier == RobotCAN::master_address_low_priority)
@@ -327,18 +334,18 @@ void loop()
 		}
 
 
-		Serial.printf("Temperature: %d (%d), VBUS %f\r\n", FOC::get_temperature(), analogRead(A_TEMPERATURE), FOC::get_vbus());
+		//Serial.printf("Temperature: %d (%d), VBUS %f\r\n", FOC::get_temperature(), analogRead(A_TEMPERATURE), FOC::get_vbus());
 		
 		if (vbus_ok > 10)
 		{
-			Serial.printf("Voltage sufficient (%f), temp at %f, starting FOC.\n", FOC::get_vbus(), FOC::get_temperature());
+			Serial.printf("Voltage sufficient (%f), temp at %d, starting FOC.\n", FOC::get_vbus(), FOC::get_temperature());
 			FOC::setup();
 		}
 	}
 	#endif
 	FOC::loop();
-	#if 0
-	if (FOC::IsSetup() && last_feedback < millis())
+	#if 1
+	if (FOC::IsSetup() && last_feedback + 0 < millis())
 	{
 		last_feedback = millis();
 		#if !DEMO
@@ -346,6 +353,7 @@ void loop()
 		message.angle = FOC::get_angle();
 		message.temperature = FOC::get_temperature()*2;
 		message.current = FOC::get_current()/10;
+		//Serial.printf("Temperature: %d, VBUS: %f\r\n", FOC::get_temperature(), FOC::get_vbus());
 		#if SIMPLECANLIB
 		CanInstance->SendMessage(reinterpret_cast<uint8_t*>(&message), sizeof(message), RobotCAN::master_address_low_priority);
 		#endif

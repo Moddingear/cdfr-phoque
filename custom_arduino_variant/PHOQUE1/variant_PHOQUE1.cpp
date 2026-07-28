@@ -10,8 +10,7 @@
  *
  *******************************************************************************
  */
-#if defined(ARDUINO_GENERIC_G431V6TX) || defined(ARDUINO_GENERIC_G431V8TX) ||\
-    defined(ARDUINO_GENERIC_G431VBTX) || defined(ARDUINO_GENERIC_G441VBTX)
+#if defined(ARDUINO_PHOQUE1)
 #include "variant_PHOQUE1.h"
 #include "pinmap.h"
 
@@ -132,4 +131,4 @@ extern "C" const uint32_t analogInputPin[] = {
   81  // A22, PF1
 };
 
-#endif /* ARDUINO_GENERIC_* */
+#endif
