@@ -86,12 +86,11 @@
 BLDCMotor motor(POLE_PAIRS, PHASE_RESISTANCE, KV, PHASE_INDUCTANCE_Q, PHASE_INDUCTANCE_D);
 #ifdef ARDUINO_PHOQUE1
 STSPIN32G4 driver;
-#define PHOQUE1r2
 #ifdef PHOQUE1r2
 #warning "Compiling for Phoque1r2"
 Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shunt(3e-3f, 1.5e3f, 22e3f, 2.2e3), 16.f);
 #else
-Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shunt(3e-3f, 1.5e3f, 100e3f), 32.f);
+Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shunt(3e-3f, 1.5e3f, 100e3f), -32.f);
 #endif
 #endif
 #if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
@@ -463,8 +462,8 @@ void FOC::setup()
 	pinMode(PIN_NFAULT, INPUT);
 	#endif
 
-	pinMode(DEBUG_PINA, OUTPUT);
-	pinMode(DEBUG_PINB, OUTPUT);
+	//pinMode(DEBUG_PINA, OUTPUT);
+	//pinMode(DEBUG_PINB, OUTPUT);
 	delay(1);
 	foc_setup = true;
 
@@ -482,9 +481,9 @@ void FOC::RealTimeLoop()
 	//digitalWriteFast(digitalPinToPinName(DEBUG_PINB), HIGH);
 	motor.move();
 	//digitalWriteFast(digitalPinToPinName(DEBUG_PINB), LOW);
-	digitalWriteFast(digitalPinToPinName(DEBUG_PINA), HIGH);
+	//digitalWriteFast(digitalPinToPinName(DEBUG_PINA), HIGH);
 	motor.loopFOC();
-	digitalWriteFast(digitalPinToPinName(DEBUG_PINA), LOW);
+	//digitalWriteFast(digitalPinToPinName(DEBUG_PINA), LOW);
 
 	#if 0
 	static float last_shaft_angle = motor.shaftAngle();
@@ -686,10 +685,10 @@ void FOC::loop()
 #endif
 
 	#if COMMANDER
-	digitalWriteFast(digitalPinToPinName(DEBUG_PINA), HIGH);
+	//digitalWriteFast(digitalPinToPinName(DEBUG_PINA), HIGH);
 	motor.monitor();
 	commander.run();
-	digitalWriteFast(digitalPinToPinName(DEBUG_PINA), LOW);
+	//digitalWriteFast(digitalPinToPinName(DEBUG_PINA), LOW);
 	#endif
     
 	// main FOC algorithm function
