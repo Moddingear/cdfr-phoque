@@ -9,14 +9,9 @@
 #include <drivers/stspin32g4/STSPIN32G4.h>
 #include <current_sense/phoque1/Phoque1_CurrentSense.hpp>
 #endif
-#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
-#include <drivers/drv832x/drv832x.h>
 #if defined(ARDUINO_PHOQUE2)
+#include <drivers/drv832x/drv832x.h>
 #include <current_sense/phoque2/Phoque2_CurrentSense.hpp>
-#endif
-#if defined(ARDUINO_PHOQUE2a)
-#include <current_sense/phoque2a/Phoque2a_CurrentSense.hpp>
-#endif
 #endif
 #if defined(ARDUINO_PHOQUE)
 #if BRAKE_EN
@@ -24,21 +19,18 @@
 #endif
 #include <encoders/sc60228/MagneticSensorSC60228.h>
 #include <AsyncSensor.hpp>
-#include <stm32g4xx_ll_spi.h>
+//#include <stm32g4xx_ll_spi.h>
 #endif
 #if __has_include("sTune.h")
 #define HAS_STUNE
 #include "sTune.h"
 #endif
 
-#include <current_sense/hardware_specific/stm32/stm32_mcu.h>
-#include <stm32g4xx_hal.h>
+//#include <current_sense/hardware_specific/stm32/stm32_mcu.h>
+//#include <stm32g4xx_hal.h>
 
 #include <math.hpp>
-
-#ifdef ARDUINO_PHOQUE2A
-#define D4215
-#endif
+#include <can.hpp>
 
 #ifndef D4215
 #define POLE_PAIRS 7
@@ -64,11 +56,6 @@
 #define RTL 0
 #define RTL_ASYNC 0 //Use another timer for the real time loop
 
-#ifdef ARDUINO_PHOQUE2A
-#define DEBUG_PINA J7_RX
-#define DEBUG_PINB J7_TX
-#define DEBUG_PINC I2C_SCL
-#endif
 #ifdef ARDUINO_PHOQUE2
 #define DEBUG_PINA PIN_SERIAL_RX
 #define DEBUG_PINB PIN_SERIAL_TX
@@ -93,17 +80,9 @@ Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shu
 Phoque1_CurrentSense current_sensor(Phoque1_CurrentSense::compute_equivalent_shunt(3e-3f, 1.5e3f, 100e3f), -32.f);
 #endif
 #endif
-#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
+#if defined(ARDUINO_PHOQUE2)
 DRV832xDriver6PWM driver(A_PHASE_UH, A_PHASE_UL, A_PHASE_VH, A_PHASE_VL, A_PHASE_WH, A_PHASE_WL, PIN_SS_DRIVER, NOT_SET, NOT_SET, 2000000);
-#if defined(ARDUINO_PHOQUE2)
 Phoque2_CurrentSense current_sensor(3e-3f, 40.f);
-#endif
-#if defined(ARDUINO_PHOQUE2a)
-Phoque2a_CurrentSense current_sensor(3e-3f, 40.f);
-#endif
-#endif
-
-#if defined(ARDUINO_PHOQUE2)
 SPIClass position_sensor_spi(PIN_MOSI_MAG_ANGLE, PIN_MISO_MAG_ANGLE, PIN_CLK_MAG_ANGLE);
 #define MAG_SPI (&position_sensor_spi)
 #else
@@ -260,6 +239,20 @@ float FOC::get_vbus()
 	#endif
 }
 
+uint16_t FOC::get_pot()
+{
+	uint16_t pot_raw;
+	if (current_sensor.initialized)
+	{
+		pot_raw = current_sensor.readRaw(A_POTENTIOMETER);
+	}
+	else
+	{
+		pot_raw = analogRead(A_POTENTIOMETER);
+	}
+	return pot_raw;
+}
+
 void update_vbus(int temperature)
 {
 	auto &vbus = driver.voltage_power_supply;
@@ -330,7 +323,7 @@ void init_sensors()
 	Serial.printf("Starting driver init\n");
 	driver.init();
 
-	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
+	#if defined(ARDUINO_PHOQUE2)
 	driver.setRegistersLocked(false);
 	driver.setCurrentSenseGain(CSAGain_40);
 	driver.setHighSideChargeCurrent(IDRIVEP_1000mA);
@@ -338,6 +331,7 @@ void init_sensors()
 	driver.setLowSideChargeCurrent(IDRIVEP_1000mA);
 	driver.setLowSideDischargeCurrent(IDRIVEN_2000mA);
 	driver.setDriveTime(TDRIVE_4000ns);
+	driver.calibrate_current_sense();
 	#endif
 
 	#if defined(TIM1_DEBUG)
@@ -414,9 +408,11 @@ void FOC::setup()
 	}
 	#ifdef HAL_CORDIC_MODULE_ENABLED
     SimpleFOC_CORDIC_Config(); 
+	Serial.printf("CORDIC OK\n");
 	#endif
 	#if BRAKE_EN
 	brake.init(30);
+	Serial.printf("Brake OK\n");
 	#endif
 	
 	// enable more verbose output for debugging
@@ -425,15 +421,15 @@ void FOC::setup()
 	SimpleFOCDebug::enable(&Serial);
 	#endif
 	param_foc();
-	Serial.printf("param_foc OK\n");
+	Serial.printf("Param OK\n");
 	init_sensors();
-	Serial.printf("init_sensors OK\n");
+	Serial.printf("Sensors OK\n");
 	// initialize motor
 	motor.init();
-	Serial.printf("motor.init OK\n");
+	Serial.printf("Regular init OK\n");
 	// init FOC
 	bool initFOC_status = motor.initFOC();
-	Serial.printf("motor.initFOC %s\n", initFOC_status ? "OK":"KO");
+	Serial.printf("FOC init %s\n", initFOC_status ? "OK":"KO");
 
 	//motor.tuneCurrentController(5000);
 	//motor.characteriseMotor(motor.voltage_sensor_align);
@@ -458,7 +454,7 @@ void FOC::setup()
 	#if defined(ARDUINO_PHOQUE1)
 	attachInterrupt(PIN_NFAULT, OnFault, RISING);
 	#endif
-	#if defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)
+	#if defined(ARDUINO_PHOQUE2)
 	pinMode(PIN_NFAULT, INPUT);
 	#endif
 
@@ -589,7 +585,7 @@ void FOC::loop()
 	}
 	#endif
 
-	#if (defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a))
+	#if defined(ARDUINO_PHOQUE2)
 	static auto lastPrint = millis();
 	if (millis() - lastPrint > 1000)
 	{
@@ -749,7 +745,7 @@ float FOC::get_current()
 	return motor.current.q;
 }
 
-void FOC::tune_settings(const RobotCAN::PIDTunePacket *message)
+void FOC::tune_settings(const RobotCAN::PIDTunePacket *message, bool value_request)
 {
 	PIDController* controller = nullptr;
 	LowPassFilter* lpf = nullptr;
@@ -772,32 +768,50 @@ void FOC::tune_settings(const RobotCAN::PIDTunePacket *message)
 		lpf = &motor.LPF_angle;
 		break;
 	default:
-		break;
+		return;
 	}
+	float *parameter = nullptr;
 	switch (message->parameter)
 	{
 	case RobotCAN::PIDTunePacket::parameter_select::P :
-		controller->P = message->new_value;
+		parameter = &controller->P;
 		break;
 	case RobotCAN::PIDTunePacket::parameter_select::I :
-		controller->I = message->new_value;
+		parameter = &controller->I;
 		break;
 	case RobotCAN::PIDTunePacket::parameter_select::D :
-		controller->D = message->new_value;
+		parameter = &controller->D;
 		break;
 	case RobotCAN::PIDTunePacket::parameter_select::Limit :
-		controller->limit = message->new_value;
+		parameter = &controller->limit;
 		break;
 	case RobotCAN::PIDTunePacket::parameter_select::Ramp :
-		controller->output_ramp = message->new_value;
+		parameter = &controller->output_ramp;
 		break;
 	case RobotCAN::PIDTunePacket::parameter_select::LPF :
-		lpf->Tf = message->new_value;
+		parameter = &lpf->Tf;
 		break;
-	
 	default:
-		break;
+		return;
 	}
+	if (parameter == nullptr)
+	{
+		return;
+	}
+	
+	if (value_request)
+	{
+		RobotCAN::PIDTunePacket response;
+		response.loop = message->loop;
+		response.parameter = message->parameter;
+		response.new_value = *parameter;
+		can_if::send(RobotCAN::ID_extended(0, RobotCAN::PacketType::PID_SETTING, 0, 0, true, false), reinterpret_cast<uint8_t*>(&response), sizeof(response));
+	}
+	else
+	{
+		*parameter = message->new_value;
+	}
+	
 }
 
 extern "C" {

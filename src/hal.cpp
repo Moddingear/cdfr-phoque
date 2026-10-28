@@ -3,7 +3,6 @@
 #include <stm32g4xx_hal.h>
 
 
-
 extern "C" void Error_Handler(void)
 {
 	__disable_irq();
@@ -21,6 +20,17 @@ extern "C" void NMI_Handler(void)
 
 extern "C" void HardFault_Handler(void)
 {
+	//configurable fault escalated to HardFault
+	volatile bool escalated = SCB->HFSR & (1UL << 30);
+	//bus fault during exception vector fetch
+	volatile bool busfault = SCB->HFSR & (1UL << 1);
+
+	volatile bool divide_by_zero = SCB->CFSR & (1UL << 25);
+	volatile bool unaligned_access = SCB->CFSR & (1UL << 24);
+	volatile bool precise_data_access = SCB->CFSR & (1UL << 18);
+	volatile bool imprecise_data_access = SCB->CFSR & (1UL << 17);
+	volatile bool illegal_data_access = SCB->CFSR & (1UL << 1);
+	volatile bool illegal_instruction_access = SCB->CFSR & (1UL << 0);
 	while (1)
 	{
 	}
@@ -107,7 +117,7 @@ extern "C" void SystemClock_Config(void)
 
 }
 #endif
-#if (defined(ARDUINO_PHOQUE2) || defined(ARDUINO_PHOQUE2a)) && 0
+#if (defined(ARDUINO_PHOQUE2)) && 0
 extern "C" void SystemClock_Config(void)
 {
 	RCC_OscInitTypeDef RCC_OscInitStruct = {0};
